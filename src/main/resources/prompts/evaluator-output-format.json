@@ -1,0 +1,20 @@
+{
+  "type": "OBJECT",
+  "properties": {
+    "evaluations": {
+      "type": "ARRAY",
+      "items": {
+        "type": "OBJECT",
+        "properties": {
+          "user_id": { "type": "INTEGER" },
+          "evidence": { "type": "ARRAY", "items": { "type": "STRING" } },
+          "feedback": { "type": "STRING" },
+          "score": { "type": "INTEGER", "minimum": 0, "maximum": 10 }
+        },
+        "required": ["user_id", "evidence", "feedback", "score"],
+        "propertyOrdering": ["user_id", "evidence", "feedback", "score"]
+      }
+    }
+  },
+  "required": ["evaluations"]
+}

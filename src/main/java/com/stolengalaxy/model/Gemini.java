@@ -6,8 +6,14 @@ import com.stolengalaxy.Task;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-
 import java.util.List;
+
+import com.google.genai.Client;
+import com.google.genai.types.Content;
+import com.google.genai.types.GenerateContentConfig;
+import com.google.genai.types.GenerateContentResponse;
+import com.google.genai.types.Part;
+import com.google.genai.types.Schema;
 
 public class Gemini {
     public static JsonObject query(String projectDescription, List<Task> tasks, String repoUrl) throws IOException, InterruptedException {
@@ -40,8 +46,19 @@ public class Gemini {
         String input = "PROJECT_DESCRIPTION:\n" + projectDescription
                 + "\n\nUSERS:\n" + usersJson
                 + "\n\nCOMMITS:\n" + commitsText;
-        System.out.println(input);
 
-        return null;
+        String jsonFormat = Files.readString(Path.of("src/main/resources/prompts/evaluator-out"));
+
+        GenerateContentConfig config = GenerateContentConfig.builder()
+                .systemInstruction(Content.fromParts(Part.fromText(systemPrompt)))
+                .responseMimeType("application/json")
+                .responseSchema(Schema.fromJson(jsonFormat))
+                .build();
+
+        Client client = Client.builder().apiKey(System.getenv("GEMINI_API_KEY")).build();
+        GenerateContentResponse response = client.models.generateContent("gemini-3.8-flash", input, config);
+
+        String text = response.text();
+        return JsonParser.parseString(text).getAsJsonObject();
     }
 }
