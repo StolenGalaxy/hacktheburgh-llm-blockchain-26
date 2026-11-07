@@ -16,6 +16,7 @@ contract ProjectDeposit {
     mapping(uint256 => bool) public isSettled;
     mapping(uint256 => mapping(address => uint256)) public deposits;
     mapping(uint256 => mapping(address => uint256)) public claimable;
+    mapping(uint256 => uint256) public endTime; //
 
     bool private entered;
 
@@ -41,9 +42,16 @@ contract ProjectDeposit {
         usdc = PaymentSystem(_usdcAddress);
     }
 
+    function createPool(uint256 poolId, uint256 duration) external onlyOwner{
+        require(endTime[poolId] == 0, "This pool already exists");
+        endTime[poolId] = block.timestamp + duration;
+    }
+
     function deposit(uint256 poolId, uint256 amount) external nonReentrant {
         require(!isSettled[poolId], "Pool already settled");
         require(amount > 0, "Deposit must be positive");
+        require(endTime[poolId] != 0, "Pool does not exist"); //endtime[poolid] will be zero for a non started poolId
+        require(!durationHasElapsed(poolId), "Pool has expired");
 
         uint256 balanceBefore = usdc.balanceOf(address(this));
         require(usdc.transferFrom(msg.sender, address(this), amount), "USDC transferFrom failed");
@@ -55,9 +63,16 @@ contract ProjectDeposit {
         emit Deposit(poolId, msg.sender, amount);
     }
 
+    function durationHasElapsed(uint256 poolId) public view returns (bool){
+        return (endTime[poolId] < block.timestamp && endTime[poolId] != 0); //make sure the pool has fully elapsed, and is non-zero
+    }
+
+
     /// @notice The owner is trusted to determine the pool outcome; allocations must distribute the entire pool.
     function settlePool(uint256 poolId, address[] calldata recipients, uint256[] calldata amounts) external onlyOwner {
         require(!isSettled[poolId], "Pool already settled");
+        require(durationHasElapsed(poolId), "Pool timer has not elapsed, cannot settle");
+
         require(totalDeposited[poolId] > 0, "Pool has no deposits");
         require(recipients.length > 0 && recipients.length == amounts.length, "Invalid allocation arrays");
 
