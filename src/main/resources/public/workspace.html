@@ -6,6 +6,7 @@
   <title>FairShare — Workspace</title>
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/dialogs.js" defer></script>
+  <script src="/js/workspace.js" defer></script>
 </head>
 <body>
 <div class="app">
@@ -17,15 +18,13 @@
     <div class="stack">
       <span class="sidebar-label">Your projects</span>
       <button class="btn wide" type="button" data-open-dialog="new-project">+ New project</button>
-      <ul class="project-list">
-        <li><a class="active" href="/workspace.html">HackTheBurgh 2026</a></li>
-      </ul>
+      <ul class="project-list" id="project-list"></ul>
     </div>
 
     <div class="account row">
-      <span class="avatar">AL</span>
+      <span class="avatar" id="account-avatar"></span>
       <div>
-        <div>Alice</div>
+        <div id="account-name"></div>
         <a class="small" href="/logout">Log out</a>
       </div>
     </div>
@@ -35,128 +34,90 @@
   <div class="main">
     <header class="topbar">
       <span class="muted small">Projects /</span>
-      <span class="small">HackTheBurgh 2026</span>
-      <button class="btn push" type="button" data-open-dialog="inbox">Inbox <span class="count">1</span></button>
-      <span class="avatar">AL</span>
+      <span class="small" id="crumb-project"></span>
+      <button class="btn push" type="button" data-open-dialog="inbox">Inbox <span class="count" id="inbox-count" hidden></span></button>
+      <span class="avatar" id="topbar-avatar"></span>
     </header>
 
     <main class="content stack">
+      <p class="error" id="page-error" role="alert"></p>
 
-      <!-- Project header -->
-      <section class="stack">
-        <div class="row wrap">
-          <h1>HackTheBurgh 2026</h1>
-          <span class="badge amber">Awaiting stakes</span>
-        </div>
-        <p class="muted">Build a fairer way to work together. A commitment app that makes every contribution count.</p>
-        <div class="meta">
-          <span>Due 8 Nov 2026, 12:00 London</span>
-          <span>4 members</span>
-          <a href="https://github.com/fairshare/app">github.com/fairshare/app ↗</a>
+      <!-- Shown when the user has no projects -->
+      <section class="card stack" id="empty-state" hidden>
+        <h2>No projects yet</h2>
+        <p class="muted">Create a project, or accept an invitation from your inbox.</p>
+        <div class="row">
+          <button class="btn primary" type="button" data-open-dialog="new-project">+ New project</button>
         </div>
       </section>
 
-      <div class="columns">
-
-        <!-- ===== Tasks ===== -->
-        <section class="primary-col stack">
-          <div class="notice">3 of 4 members have staked. Add yours to get started.</div>
-
-          <div class="row between">
-            <h2>Tasks</h2>
-            <button class="btn" type="button" data-open-dialog="add-task">+ Add task</button>
+      <div class="stack" id="project-view" hidden>
+        <!-- Project header -->
+        <section class="stack">
+          <div class="row wrap">
+            <h1 id="project-name"></h1>
+            <span class="badge" id="project-status"></span>
           </div>
-
-          <nav class="tabs">
-            <a class="active" href="?filter=all">All tasks</a>
-            <a href="?filter=mine">My tasks</a>
-          </nav>
-
-          <ul class="task-list">
-            <li class="card task">
-              <div class="row between">
-                <span class="task-id">FS-01</span>
-                <span class="badge amber">In progress</span>
-              </div>
-              <h3>Build the project dashboard</h3>
-              <div class="row between small">
-                <span class="row"><span class="avatar">AL</span>Alice</span>
-                <span class="muted">3 commits</span>
-              </div>
-            </li>
-            <li class="card task">
-              <div class="row between">
-                <span class="task-id">FS-02</span>
-                <span class="badge amber">In progress</span>
-              </div>
-              <h3>Connect the backend API</h3>
-              <div class="row between small">
-                <span class="row"><span class="avatar">BO</span>Bob</span>
-                <span class="muted">5 commits</span>
-              </div>
-            </li>
-            <li class="card task">
-              <div class="row between">
-                <span class="task-id">FS-03</span>
-                <span class="badge green">Ready for review</span>
-              </div>
-              <h3>Implement the deposit contract</h3>
-              <div class="row between small">
-                <span class="row"><span class="avatar">CA</span>Carol</span>
-                <span class="muted">7 commits</span>
-              </div>
-            </li>
-            <li class="card task">
-              <div class="row between">
-                <span class="task-id">FS-04</span>
-                <span class="badge">Not started</span>
-              </div>
-              <h3>Build the contribution evaluator</h3>
-              <div class="row between small">
-                <span class="row"><span class="avatar">DA</span>David</span>
-                <span class="muted">0 commits</span>
-              </div>
-            </li>
-          </ul>
+          <p class="muted" id="project-description"></p>
+          <div class="meta">
+            <span id="project-deadline"></span>
+            <span id="project-member-count"></span>
+            <a id="project-repo" target="_blank" rel="noopener"></a>
+          </div>
         </section>
 
-        <!-- ===== Side panels ===== -->
-        <aside class="side-col stack">
-          <section class="card stack">
-            <h2>The shared pool</h2>
-            <div>
-              <div class="pool-value">75.00</div>
-              <p class="muted small">of 100.00 total commitment</p>
-            </div>
-            <div class="progress-bar"><span style="width: 75%"></span></div>
-            <div class="row between small muted">
-              <span>3 of 4 staked</span>
-              <span>25 each</span>
-            </div>
-            <div class="divider"></div>
-            <div class="row between small">
-              <span class="muted">Your stake</span>
-              <span class="badge amber">Pending</span>
-            </div>
-            <button class="btn primary wide" type="button" data-open-dialog="stake">Stake 25</button>
-            <p class="muted small" style="text-align: center">No real funds</p>
-          </section>
+        <div class="columns">
 
-          <section class="card stack">
+          <!-- ===== Tasks ===== -->
+          <section class="primary-col stack">
+            <div class="notice" id="stake-notice" hidden></div>
+
             <div class="row between">
-              <h2>The team</h2>
-              <button class="link-btn" type="button" data-open-dialog="invite">+ Invite</button>
+              <h2>Tasks</h2>
+              <button class="btn" type="button" data-open-dialog="add-task">+ Add task</button>
             </div>
-            <ul class="member-list">
-              <li class="row"><span class="avatar">AL</span>Alice <span class="badge amber push">Pending</span></li>
-              <li class="row"><span class="avatar">BO</span>Bob <span class="badge green push">✓ 25</span></li>
-              <li class="row"><span class="avatar">CA</span>Carol <span class="badge green push">✓ 25</span></li>
-              <li class="row"><span class="avatar">DA</span>David <span class="badge green push">✓ 25</span></li>
-            </ul>
+
+            <nav class="tabs">
+              <a id="tab-all" href="?filter=all">All tasks</a>
+              <a id="tab-mine" href="?filter=mine">My tasks</a>
+            </nav>
+
+            <ul class="task-list" id="task-list"></ul>
           </section>
 
-          <button class="link-btn" type="button" data-open-dialog="evaluation">How evaluation works ↗</button>
-        </aside>
+          <!-- ===== Side panels ===== -->
+          <aside class="side-col stack">
+            <section class="card stack">
+              <h2>The shared pool</h2>
+              <div>
+                <div class="pool-value" id="pool-value"></div>
+                <p class="muted small" id="pool-target"></p>
+              </div>
+              <div class="progress-bar"><span id="pool-progress" style="width: 0%"></span></div>
+              <div class="row between small muted">
+                <span id="pool-staked"></span>
+                <span id="pool-each"></span>
+              </div>
+              <div class="divider"></div>
+              <div class="row between small">
+                <span class="muted">Your stake</span>
+                <span class="badge" id="your-stake"></span>
+              </div>
+              <button class="btn primary wide" type="button" data-open-dialog="stake" id="stake-button"></button>
+              <p class="muted small" style="text-align: center">No real funds</p>
+            </section>
+
+            <section class="card stack">
+              <div class="row between">
+                <h2>The team</h2>
+                <button class="link-btn" type="button" data-open-dialog="invite">+ Invite</button>
+              </div>
+              <ul class="member-list" id="member-list"></ul>
+            </section>
+
+            <button class="link-btn" type="button" data-open-dialog="evaluation">How evaluation works ↗</button>
+          </aside>
+        </div>
       </div>
 
       <footer class="footer">Built at HackTheBurgh · Edinburgh, 2026</footer>
@@ -196,6 +157,7 @@
 
 <dialog id="add-task">
   <form class="stack" method="post" action="/tasks">
+    <input type="hidden" name="projectId">
     <h2>Add task</h2>
     <label class="field">Task
       <input name="title" maxlength="90" required>
@@ -204,12 +166,7 @@
       <textarea name="description" maxlength="300"></textarea>
     </label>
     <label class="field">Assigned to
-      <select name="member">
-        <option>Alice</option>
-        <option>Bob</option>
-        <option>Carol</option>
-        <option>David</option>
-      </select>
+      <select name="member" id="member-select" required></select>
     </label>
     <div class="dialog-actions">
       <button class="btn" type="submit" formmethod="dialog" formnovalidate>Cancel</button>
@@ -220,7 +177,8 @@
 
 <dialog id="stake">
   <form class="stack" method="post" action="/stake">
-    <h2>Stake 25?</h2>
+    <input type="hidden" name="projectId">
+    <h2 id="stake-title">Stake?</h2>
     <p class="muted">Your stake goes into the shared pool and is settled at the deadline.</p>
     <div class="dialog-actions">
       <button class="btn" type="submit" formmethod="dialog">Cancel</button>
@@ -231,6 +189,7 @@
 
 <dialog id="invite">
   <form class="stack" method="post" action="/invites">
+    <input type="hidden" name="projectId">
     <h2>Invite a member</h2>
     <label class="field">Email address
       <input name="email" type="email" placeholder="teammate@example.com" required>
@@ -249,16 +208,7 @@
 <dialog id="inbox">
   <div class="stack">
     <h2>Inbox</h2>
-    <article class="card stack">
-      <h3>Edinburgh Game Jam</h3>
-      <p class="muted small">From Bob · Due 15 Nov 2026 · Stake 10</p>
-      <p class="small"><strong>Your task:</strong> Design the level editor</p>
-      <form class="dialog-actions" method="post" action="/invites/respond">
-        <input type="hidden" name="inviteId" value="example-id">
-        <button class="btn" name="response" value="declined">Decline</button>
-        <button class="btn primary" name="response" value="accepted">Accept</button>
-      </form>
-    </article>
+    <div class="stack" id="inbox-list"></div>
     <form class="dialog-actions" method="dialog">
       <button class="btn">Close</button>
     </form>

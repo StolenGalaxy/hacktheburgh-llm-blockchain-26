@@ -13,8 +13,15 @@ public class User {
     @GeneratedValue
     private int userID;
 
-    @Column(nullable = false, unique = true)
+    /** Display name. */
+    @Column(nullable = false)
     private String username;
+
+    /** Login identifier, stored lower-case. */
+    @Column(unique = true)
+    private String email;
+
+    private String passwordHash;
 
     private String walletAddress;
 
@@ -32,20 +39,25 @@ public class User {
         // for JPA
     }
 
-    public User(String username, String walletAddress, String githubUsername) {
+    public User(String username, String email, String passwordHash, String githubUsername) {
         this.username = username;
-        this.walletAddress = walletAddress;
+        this.email = email;
+        this.passwordHash = passwordHash;
         this.githubUsername = githubUsername;
     }
 
     /** Sets the ID explicitly; only for users that are never persisted (e.g. tests). */
     public User(int userID, String username, String walletAddress, String githubUsername) {
-        this(username, walletAddress, githubUsername);
         this.userID = userID;
+        this.username = username;
+        this.walletAddress = walletAddress;
+        this.githubUsername = githubUsername;
     }
 
     public int userID() { return userID; }
     public String username() { return username; }
+    public String email() { return email; }
+    public String passwordHash() { return passwordHash; }
     public String walletAddress() { return walletAddress; }
     public String githubUsername() { return githubUsername; }
     public List<Project> projects() { return projects; }

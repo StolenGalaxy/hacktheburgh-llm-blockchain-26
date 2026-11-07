@@ -34,6 +34,8 @@ p  { margin: 0; }
 a { color: var(--green); }
 button, input, select, textarea { font: inherit; color: inherit; }
 
+[hidden] { display: none !important; }
+
 :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
 
 .muted { color: var(--muted); }

@@ -11,15 +11,16 @@
         <class>com.stolengalaxy.User</class>
         <class>com.stolengalaxy.Project</class>
         <class>com.stolengalaxy.Task</class>
+        <class>com.stolengalaxy.Invite</class>
         <exclude-unlisted-classes>true</exclude-unlisted-classes>
 
         <properties>
             <!-- Connection -->
             <property name="jakarta.persistence.jdbc.driver" value="org.sqlite.JDBC"/>
-            <property name="jakarta.persistence.jdbc.url" value="jdbc:sqlite:app.db"/>
+            <property name="jakarta.persistence.jdbc.url" value="jdbc:sqlite:app.db?journal_mode=WAL&amp;busy_timeout=5000"/>
             <property name="eclipselink.target-database" value="com.stolengalaxy.db.SQLitePlatform"/>
 
-            <!-- Create the schema if it doesn't exist -->
+            <!-- Create missing tables. This never alters existing ones: delete app.db after changing an entity. -->
             <property name="eclipselink.ddl-generation" value="create-tables"/>
             <property name="eclipselink.ddl-generation.output-mode" value="database"/>
 

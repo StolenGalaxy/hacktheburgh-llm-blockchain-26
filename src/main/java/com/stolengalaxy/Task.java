@@ -19,9 +19,14 @@ public class Task {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    /** Short statement of the task, e.g. "Build the project dashboard". */
     @Lob
     @Column(nullable = false)
     private String objective;
+
+    /** Optional extra detail about the task. */
+    @Lob
+    private String details;
 
     private int weightPercentage;
 
@@ -29,20 +34,22 @@ public class Task {
         // for JPA
     }
 
-    Task(Project project, User user, String objective, int weightPercentage) {
+    Task(Project project, User user, String objective, String details) {
         this.project = project;
         this.user = user;
         this.objective = objective;
-        this.weightPercentage = weightPercentage;
+        this.details = details;
     }
 
     public int taskID() { return taskID; }
     public Project project() { return project; }
     public User user() { return user; }
     public String objective() { return objective; }
+    public String details() { return details; }
     public int weightPercentage() { return weightPercentage; }
 
     public void setObjective(String objective) { this.objective = objective; }
+    public void setDetails(String details) { this.details = details; }
     public void setWeightPercentage(int weightPercentage) { this.weightPercentage = weightPercentage; }
 
     @Override
