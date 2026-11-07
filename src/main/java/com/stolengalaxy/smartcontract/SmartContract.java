@@ -60,8 +60,8 @@ public class SmartContract implements ISmartContract {
         requireValidAddress(contractAddress, "contract");
         requireValidAddress(usdcAddress, "USDC");
         this.txManager = new RawTransactionManager(web3j, credentials, chainId);
-        this.receiptProcessor = new PollingTransactionReceiptProcessor(
-                web3j, TransactionManager.DEFAULT_POLLING_FREQUENCY, TransactionManager.DEFAULT_POLLING_ATTEMPTS_PER_TX_HASH);
+        // Poll every second (web3j's default is 15s, which makes every call on a local anvil chain take 15s).
+        this.receiptProcessor = new PollingTransactionReceiptProcessor(web3j, 1_000, 600);
         this.gasProvider = gasProvider;
         this.contractAddress = contractAddress;
         this.usdcAddress = usdcAddress;
@@ -150,6 +150,12 @@ public class SmartContract implements ISmartContract {
         return (Boolean) call(fn).get(0).getValue();
     }
 
+    /** USDC base units {@code address} has deposited into this pool. */
+    public BigInteger depositOf(String address) {
+        requireValidAddress(address, "depositor");
+        return callUint("deposits", List.of(new Uint256(poolId), new Address(address)));
+    }
+
     public BigInteger claimable(String address) {
         requireValidAddress(address, "recipient");
         return callUint("claimable", List.of(new Uint256(poolId), new Address(address)));
@@ -167,13 +173,28 @@ public class SmartContract implements ISmartContract {
             }
             TransactionReceipt receipt = receiptProcessor.waitForTransactionReceipt(response.getTransactionHash());
             if (!receipt.isStatusOK()) {
-                throw new SmartContractException(function.getName() + " reverted: "
-                        + (receipt.getRevertReason() != null ? receipt.getRevertReason() : receipt.getTransactionHash()));
+                throw new SmartContractException(function.getName() + " reverted: " + revertReason(to, data, receipt));
             }
             return receipt;
         } catch (IOException | TransactionException e) {
             throw new SmartContractException(function.getName() + " failed", e);
         }
+    }
+
+    /** Most nodes (anvil included) don't put the reason in the receipt, so replay the tx as an eth_call to recover it. */
+    private String revertReason(String to, String data, TransactionReceipt receipt) {
+        if (receipt.getRevertReason() != null) {
+            return receipt.getRevertReason();
+        }
+        try {
+            txManager.sendCall(to, data,
+                    org.web3j.protocol.core.DefaultBlockParameter.valueOf(receipt.getBlockNumber().subtract(BigInteger.ONE)));
+        } catch (org.web3j.tx.exceptions.ContractCallException e) {
+            return e.getMessage();
+        } catch (IOException ignored) {
+            // fall through
+        }
+        return "tx " + receipt.getTransactionHash();
     }
 
     @SuppressWarnings("rawtypes")
