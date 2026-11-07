@@ -4,12 +4,15 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Persistence;
 
+import java.util.Map;
 import java.util.function.Function;
 
 /** Opens the "StolenGalaxy" persistence unit and runs work in short-lived EntityManagers. */
 public final class Database {
 
-    private static final EntityManagerFactory EMF = Persistence.createEntityManagerFactory("StolenGalaxy");
+    /** DB_URL (e.g. jdbc:sqlite:/tmp/test.db) overrides the JDBC URL in persistence.xml. */
+    private static final EntityManagerFactory EMF = Persistence.createEntityManagerFactory("StolenGalaxy",
+            System.getenv("DB_URL") == null ? Map.of() : Map.of("jakarta.persistence.jdbc.url", System.getenv("DB_URL")));
 
     private Database() {
     }

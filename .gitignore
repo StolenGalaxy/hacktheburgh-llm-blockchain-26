@@ -45,3 +45,6 @@ bin/
 app.db
 app.db-*
 output.log
+
+### Local blockchain state (anvil) ###
+chain/

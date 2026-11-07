@@ -19,6 +19,8 @@ function el(tag, props = {}, ...children) {
 const avatar = (initials) => el("span", { class: "avatar", text: initials });
 const money = (amount) => Number(amount).toFixed(2);
 const shortAmount = (amount) => String(Number(amount));
+// USDC has 6 decimals: show at least 2 and up to all 6, e.g. 24.691356 or 15.00
+const usdc = (amount) => Number(amount).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 
 async function getJson(url) {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -82,7 +84,10 @@ function renderProject(project, me) {
   const stakedCount = project.members.filter((member) => member.staked).length;
   const allStaked = stakedCount === project.members.length;
   const status = $("#project-status");
-  if (project.deadlinePassed) {
+  if (project.contract.status === "CREATED") {
+    status.className = "badge green";
+    status.textContent = project.deadlinePassed ? "Awaiting settlement" : "Contract live";
+  } else if (project.deadlinePassed) {
     status.className = "badge";
     status.textContent = "Deadline passed";
   } else {
@@ -91,7 +96,7 @@ function renderProject(project, me) {
   }
 
   const notice = $("#stake-notice");
-  notice.hidden = project.youStaked || project.deadlinePassed;
+  notice.hidden = project.youStaked || project.deadlinePassed || project.locked;
   notice.textContent = `${stakedCount} of ${project.members.length} members have staked. Add yours to get started.`;
 
   // Tasks, with the All / Mine filter
@@ -126,12 +131,12 @@ function renderProject(project, me) {
   yourStake.textContent = project.youStaked ? `✓ ${shortAmount(project.stakeAmount)}` : "Pending";
   const stakeButton = $("#stake-button");
   stakeButton.textContent = `Stake ${shortAmount(project.stakeAmount)}`;
-  stakeButton.hidden = project.youStaked || project.deadlinePassed;
+  stakeButton.hidden = project.youStaked || project.deadlinePassed || project.locked;
   $("#stake-title").textContent = `Stake ${shortAmount(project.stakeAmount)}?`;
 
   // Team
   $("#member-list").replaceChildren(...project.members.map((member) =>
-    el("li", { class: "row" },
+    el("li", { class: "row", title: member.walletAddress ? `Wallet ${member.walletAddress}` : "" },
       avatar(member.initials),
       member.name,
       member.staked
@@ -163,6 +168,10 @@ function renderProject(project, me) {
 
   renderWeights(project);
   renderContract(project);
+
+  // Once the contract exists, tasks, weights, members and stakes are fixed
+  for (const id of ["#add-task-button", "#invite-button"]) $(id).hidden = project.locked;
+  if (project.locked) $("#edit-weights-button").hidden = true;
 
   document.querySelectorAll('input[name="projectId"]').forEach((input) => { input.value = project.id; });
   $("#project-view").hidden = false;
@@ -207,16 +216,77 @@ function renderWeights(project) {
 }
 
 // The creator can create the contract once every member has a task, has staked, and weights total 100%.
+// Creating it puts a pool on the chain and deposits every member's stake.
 function renderContract(project) {
+  const contract = project.contract;
+  const statusLine = $("#contract-status");
+  const button = $("#contract-button");
+  const details = $("#contract-details");
+  statusLine.className = "muted small";
+
+  if (contract.status === "CREATED") {
+    $("#contract-blockers").replaceChildren();
+    $("#contract-form").hidden = true;
+    statusLine.textContent = `✓ Created ${contract.createdAt}. Every member's stake is held in the pool.`;
+    details.hidden = false;
+    details.replaceChildren(...contractDetails(project));
+    return;
+  }
+
+  // NONE or CREATING (an earlier attempt didn't finish; pressing again picks up where it left off)
   const blockers = project.contractBlockers;
   const ready = blockers.length === 0;
+  const retry = contract.status === "CREATING";
+  details.hidden = true;
+  $("#contract-form").hidden = !project.youCreated;
   $("#contract-blockers").replaceChildren(...blockers.map((text) => el("li", { text })));
-  $("#contract-button").disabled = !ready || !project.youCreated;
-  $("#contract-button").hidden = !project.youCreated;
-  $("#contract-status").textContent = ready
-    ? (project.youCreated ? "Everyone has a task and has staked. Ready to create." : `Ready. Waiting for ${project.createdBy} to create it.`)
-    : (project.youCreated ? "You can create it once these are done:" : `${project.createdBy} can create it once these are done:`);
+  button.textContent = retry ? "Finish creating smart contract" : "Create smart contract";
+  button.disabled = !ready || !project.youCreated || !contract.chainAvailable;
+
+  if (!contract.chainAvailable) {
+    statusLine.className = "small warning";
+    statusLine.textContent = `The local blockchain isn't running, so the contract can't be created: ${contract.chainError}.`;
+  } else if (retry) {
+    statusLine.textContent = project.youCreated
+      ? "Creating the contract didn't finish. Press the button to complete it. Nothing is deposited twice."
+      : `Creating the contract didn't finish. ${project.createdBy} needs to complete it.`;
+  } else if (ready) {
+    statusLine.textContent = project.youCreated
+      ? `Everyone has a task and has staked. Creating it deposits ${money(project.poolTarget)} USDC into the pool.`
+      : `Ready. Waiting for ${project.createdBy} to create it.`;
+  } else {
+    statusLine.textContent = project.youCreated ? "You can create it once these are done:" : `${project.createdBy} can create it once these are done:`;
+  }
 }
+
+function contractDetails(project) {
+  const contract = project.contract;
+  const short = (address) => address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "—";
+  const row = (label, value, props = {}) => [el("dt", { text: label }), el("dd", { ...props, text: value })];
+  const rows = [
+    row("Pool ID", contract.poolId, { class: "mono" }),
+    row("Contract", short(contract.contractAddress), { class: "mono", title: contract.contractAddress || "" }),
+  ];
+  const onChain = contract.onChain;
+  if (!contract.chainAvailable) {
+    rows.push(row("Holding", "Can't check: the blockchain isn't running", { class: "warning" }));
+  } else if (!onChain) {
+    rows.push(row("Holding", "Couldn't read the pool from the chain", { class: "warning" }));
+  } else if (!onChain.exists) {
+    rows.push(row("Holding", "This pool isn't on the current chain (its state was probably deleted)", { class: "warning" }));
+  } else {
+    rows.push(row("Holding", `${usdc(onChain.totalDeposited)} USDC`));
+    rows.push(row("Deposits close", onChain.depositsClose));
+  }
+  return rows.flat();
+}
+
+// Creating the contract sends several transactions, so show that it's working
+$("#contract-form").addEventListener("submit", () => {
+  const button = $("#contract-button");
+  // Disable after the browser has captured the form, so the submission still goes through
+  setTimeout(() => { button.disabled = true; button.textContent = "Creating… (a few seconds)"; });
+});
 
 async function load() {
   showError(params.get("error"));

@@ -289,6 +289,12 @@ textarea { min-height: 80px; resize: vertical; }
 .checklist li::before { content: "○ "; }
 .checklist:empty { display: none; }
 
+.details { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; }
+.details dt { color: var(--muted); }
+.details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.mono { font-family: ui-monospace, monospace; }
+.warning { color: var(--error); }
+
 .weight-row { display: flex; align-items: center; gap: 12px; }
 .weight-row span { flex: 1; min-width: 0; }
 .weight-row input { width: 90px; }

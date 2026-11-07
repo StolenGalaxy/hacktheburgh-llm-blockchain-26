@@ -5,6 +5,7 @@ import com.stolengalaxy.Project;
 import com.stolengalaxy.Task;
 import com.stolengalaxy.User;
 import com.stolengalaxy.db.Database;
+import com.stolengalaxy.smartcontract.ProjectContracts;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.ForbiddenResponse;
@@ -37,6 +38,8 @@ public final class WebRoutes {
     private static final Pattern GITHUB_USERNAME = Pattern.compile("[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}");
     private static final Pattern GITHUB_REPO = Pattern.compile("https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+");
 
+    private static ProjectContracts contracts;
+
     private WebRoutes() {
     }
 
@@ -50,7 +53,8 @@ public final class WebRoutes {
         }
     }
 
-    public static void register(Javalin app) {
+    public static void register(Javalin app, ProjectContracts projectContracts) {
+        contracts = projectContracts;
         app.exception(FormException.class, (e, ctx) -> {
             String separator = e.page.contains("?") ? "&" : "?";
             ctx.redirect(e.page + separator + "error=" + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8),
@@ -165,8 +169,8 @@ public final class WebRoutes {
         } catch (NumberFormatException e) {
             throw new FormException(page, "The stake must be a number.");
         }
-        if (stake.signum() < 0 || stake.stripTrailingZeros().scale() > 6) {
-            throw new FormException(page, "The stake must be zero or more, with at most 6 decimal places (USDC).");
+        if (stake.signum() <= 0 || stake.stripTrailingZeros().scale() > 6) {
+            throw new FormException(page, "The stake must be more than 0, with at most 6 decimal places (USDC).");
         }
 
         int projectId = Database.transaction(em -> {
@@ -187,7 +191,7 @@ public final class WebRoutes {
         int memberId = intParam(ctx, "member", page);
 
         Database.transaction(em -> {
-            Project project = memberProject(em, projectId, userId);
+            Project project = unlockedProject(em, projectId, userId, page);
             User member = em.find(User.class, memberId);
             if (member == null || !project.isMember(member)) {
                 throw new FormException(page, "Tasks can only be assigned to project members.");
@@ -202,14 +206,17 @@ public final class WebRoutes {
         ctx.redirect(page, HttpStatus.SEE_OTHER);
     }
 
-    /** Records the stake in the database only; on-chain deposits aren't wired up yet ("No real funds"). */
+    /**
+     * Records that the member commits their stake. The money moves on-chain when the creator creates the
+     * smart contract (see {@link ProjectContracts#create}).
+     */
     private static void stake(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
         String page = projectPage(projectId);
 
         Database.transaction(em -> {
-            Project project = memberProject(em, projectId, userId);
+            Project project = unlockedProject(em, projectId, userId, page);
             User user = em.find(User.class, userId);
             if (project.hasStaked(user)) {
                 throw new FormException(page, "You've already staked in this project.");
@@ -232,7 +239,7 @@ public final class WebRoutes {
         int weight = weight(ctx, "weight", page);
 
         Database.transaction(em -> {
-            Project project = memberProject(em, projectId, userId);
+            Project project = unlockedProject(em, projectId, userId, page);
             User inviter = em.find(User.class, userId);
             boolean alreadyMember = project.users().stream().anyMatch(u -> email.equals(u.email()));
             if (alreadyMember) {
@@ -257,7 +264,7 @@ public final class WebRoutes {
         String page = projectPage(projectId);
 
         Database.transaction(em -> {
-            Project project = memberProject(em, projectId, userId);
+            Project project = unlockedProject(em, projectId, userId, page);
             Map<Task, Integer> weights = new LinkedHashMap<>();
             for (Task task : project.tasks()) {
                 weights.put(task, weight(ctx, "weight-" + task.taskID(), page));
@@ -275,29 +282,23 @@ public final class WebRoutes {
     }
 
     /**
-     * Creates the project's smart contract. Only the creator can do this, once every member has a task,
-     * every member has staked and the task weights total 100%.
+     * Creates the project's pool on-chain and deposits every member's stake into it. Only the creator can do this,
+     * once every member has a task, every member has staked and the task weights total 100%.
      */
     private static void createContract(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
         String page = projectPage(projectId);
 
-        Database.read(em -> {
-            Project project = memberProject(em, projectId, userId);
-            if (project.createdBy().userID() != userId) {
-                throw new FormException(page, "Only the project's creator can create the smart contract.");
-            }
-            List<String> blockers = project.contractBlockers();
-            if (!blockers.isEmpty()) {
-                throw new FormException(page, "Not ready yet: " + String.join("; ", blockers) + ".");
-            }
-            // TODO: create the on-chain pool here (Bank.ownerContract / createPool) and store its poolId on the project.
-            return null;
-        });
+        Database.read(em -> memberProject(em, projectId, userId)); // members only; the rest is checked by create()
+        try {
+            contracts.create(projectId, userId);
+        } catch (ProjectContracts.CreationException e) {
+            throw new FormException(page, e.getMessage());
+        }
         ctx.redirect(page + "&notice=" + URLEncoder.encode(
-                "Everything's ready. Creating the smart contract isn't wired up yet.", StandardCharsets.UTF_8),
-                HttpStatus.SEE_OTHER);
+                "Smart contract created. Every member's stake is now held in the pool until the deadline.",
+                StandardCharsets.UTF_8), HttpStatus.SEE_OTHER);
     }
 
     /** Withdraws a pending invite. Allowed for whoever sent it and for the project's creator. */
@@ -342,6 +343,9 @@ public final class WebRoutes {
                 invite.decline();
                 return -1;
             }
+            if (invite.project().isLocked()) {
+                throw new FormException(page, "That project's smart contract has already been created, so it can't take new members.");
+            }
             if (invite.project().taskFor(user).isPresent()) {
                 throw new FormException(page, "You already have a task in that project.");
             }
@@ -382,7 +386,7 @@ public final class WebRoutes {
             if (!project.isMember(user)) {
                 throw new ForbiddenResponse("You aren't a member of this project");
             }
-            return Dtos.ProjectDto.of(project, user);
+            return Dtos.ProjectDto.of(project, user, Dtos.ContractDto.of(project, contracts));
         }));
     }
 
@@ -410,6 +414,17 @@ public final class WebRoutes {
         Project project = em.find(Project.class, projectId);
         if (project == null || !project.isMember(em.find(User.class, userId))) {
             throw new FormException("/workspace.html", "Project not found.");
+        }
+        return project;
+    }
+
+    /** Like {@link #memberProject}, but refuses changes once the project's contract has been created. */
+    private static Project unlockedProject(EntityManager em, int projectId, int userId, String page) {
+        Project project = memberProject(em, projectId, userId);
+        if (project.isLocked()) {
+            throw new FormException(page, (project.contractStatus() == Project.ContractStatus.CREATED
+                    ? "The smart contract has been created" : "Creating the smart contract has started")
+                    + ", so tasks, weights, members and stakes can't change any more.");
         }
         return project;
     }

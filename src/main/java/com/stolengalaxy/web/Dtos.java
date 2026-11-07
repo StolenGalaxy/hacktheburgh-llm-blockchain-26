@@ -4,9 +4,11 @@ import com.stolengalaxy.Invite;
 import com.stolengalaxy.Project;
 import com.stolengalaxy.Task;
 import com.stolengalaxy.User;
+import com.stolengalaxy.smartcontract.ProjectContracts;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
@@ -53,8 +55,9 @@ final class Dtos {
                       BigDecimal stakeAmount, BigDecimal poolTotal, BigDecimal poolTarget,
                       boolean youStaked, boolean youCreated, String createdBy,
                       int assignedWeight, int reservedWeight, List<String> contractBlockers,
+                      boolean locked, ContractDto contract,
                       List<MemberDto> members, List<TaskDto> tasks, List<PendingInviteDto> pendingInvites) {
-        static ProjectDto of(Project project, User viewer) {
+        static ProjectDto of(Project project, User viewer, ContractDto contract) {
             BigDecimal stake = project.stakeAmount();
             return new ProjectDto(project.projectID(), project.name(), project.projectDescription(), project.repoURL(),
                     DEADLINE_FORMAT.format(project.deadline()), project.deadline().isBefore(LocalDateTime.now()),
@@ -64,6 +67,7 @@ final class Dtos {
                     project.hasStaked(viewer),
                     project.createdBy() == viewer, project.createdBy().username(),
                     project.assignedWeight(), project.reservedWeight(), project.contractBlockers(),
+                    project.isLocked(), contract,
                     project.users().stream().map(user -> MemberDto.of(project, user)).toList(),
                     project.tasks().stream().map(TaskDto::of).toList(),
                     project.invites().stream()
@@ -71,6 +75,36 @@ final class Dtos {
                             .map(invite -> PendingInviteDto.of(invite, viewer))
                             .toList());
         }
+    }
+
+    /**
+     * The project's smart contract.
+     *
+     * @param status         NONE, CREATING (started but unfinished; retrying finishes it) or CREATED
+     * @param chainAvailable whether the local blockchain is running; {@code chainError} says why not
+     * @param onChain        what the chain says about the pool right now, or null if it couldn't be read / doesn't apply
+     */
+    record ContractDto(String status, String poolId, String contractAddress, String createdAt,
+                       boolean chainAvailable, String chainError, OnChainDto onChain) {
+        static ContractDto of(Project project, ProjectContracts contracts) {
+            OnChainDto onChain = null;
+            if (project.poolId() != null && contracts.available()) {
+                ProjectContracts.PoolState state = contracts.poolState(project.poolId());
+                if (state != null) {
+                    onChain = new OnChainDto(state.exists(), state.totalDeposited(),
+                            state.exists() ? DEADLINE_FORMAT.format(LocalDateTime.ofInstant(state.depositsCloseAt(), ZoneId.systemDefault())) : null);
+                }
+            }
+            return new ContractDto(project.contractStatus().name(),
+                    project.poolId() == null ? null : project.poolId().toString(),
+                    project.contractAddress(),
+                    project.contractCreatedAt() == null ? null : DEADLINE_FORMAT.format(project.contractCreatedAt()),
+                    contracts.available(), contracts.unavailableReason(), onChain);
+        }
+    }
+
+    /** @param exists false if the pool isn't on the current chain (e.g. the chain's state was deleted) */
+    record OnChainDto(boolean exists, BigDecimal totalDeposited, String depositsClose) {
     }
 
     /** An invitation sent from this project that hasn't been answered yet. */
@@ -81,10 +115,11 @@ final class Dtos {
         }
     }
 
-    record MemberDto(int userId, String name, String initials, String githubUsername, boolean staked, boolean hasTask) {
+    record MemberDto(int userId, String name, String initials, String githubUsername, String walletAddress,
+                     boolean staked, boolean hasTask) {
         static MemberDto of(Project project, User user) {
             return new MemberDto(user.userID(), user.username(), Dtos.initials(user.username()), user.githubUsername(),
-                    project.hasStaked(user), project.taskFor(user).isPresent());
+                    user.walletAddress(), project.hasStaked(user), project.taskFor(user).isPresent());
         }
     }
 

@@ -13,6 +13,16 @@ import java.util.Set;
 @Entity
 public class Project {
 
+    /** Where the project's on-chain pool is up to. */
+    public enum ContractStatus {
+        /** Not created yet: tasks, weights, members and stakes can still change. */
+        NONE,
+        /** Creation started but didn't finish (e.g. the chain went down); creating it again picks up where it left off. */
+        CREATING,
+        /** The pool exists and holds every member's stake. */
+        CREATED
+    }
+
     @Id
     @GeneratedValue
     private int projectID;
@@ -60,6 +70,18 @@ public class Project {
     @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Invite> invites = new ArrayList<>();
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private ContractStatus contractStatus = ContractStatus.NONE;
+
+    /** The pool's ID in the ProjectDeposit contract (a uint256 on-chain). Random, so it never clashes across database resets. */
+    private Long poolId;
+
+    /** Address of the ProjectDeposit contract holding the pool. */
+    private String contractAddress;
+
+    private LocalDateTime contractCreatedAt;
+
     protected Project() {
         // for JPA
     }
@@ -97,6 +119,7 @@ public class Project {
 
     /** Assigns a task to a user, adding them as a member if they aren't one already. */
     public Task assignTask(User user, String objective, int weightPercentage) {
+        requireUnlocked();
         if (taskFor(user).isPresent()) {
             throw new IllegalStateException(user.username() + " already has a task in this project");
         }
@@ -108,12 +131,14 @@ public class Project {
     }
 
     public Invite invite(User invitedBy, String email, String objective, int weightPercentage) {
+        requireUnlocked();
         Invite invite = new Invite(this, invitedBy, email, objective, weightPercentage);
         invites.add(invite);
         return invite;
     }
 
     public void recordStake(User user) {
+        requireUnlocked();
         if (!users.contains(user)) {
             throw new IllegalStateException(user.username() + " is not a member of this project");
         }
@@ -141,6 +166,9 @@ public class Project {
         if (deadline.isBefore(LocalDateTime.now())) {
             blockers.add("The deadline has passed");
         }
+        if (stakeAmount.signum() <= 0) {
+            blockers.add("The stake per member must be more than 0");
+        }
         for (User user : users) {
             if (taskFor(user).isEmpty()) {
                 blockers.add(user.username() + " has no task");
@@ -156,6 +184,37 @@ public class Project {
             blockers.add("Pending invitations need a response");
         }
         return blockers;
+    }
+
+    /** Marks contract creation as started, keeping the pool ID from an earlier attempt if there was one. */
+    public void beginContract(long newPoolId) {
+        if (contractStatus == ContractStatus.CREATED) {
+            throw new IllegalStateException("The contract has already been created");
+        }
+        if (poolId == null) {
+            poolId = newPoolId;
+        }
+        contractStatus = ContractStatus.CREATING;
+    }
+
+    public void markContractCreated(String contractAddress) {
+        if (contractStatus != ContractStatus.CREATING) {
+            throw new IllegalStateException("Contract creation wasn't started");
+        }
+        this.contractStatus = ContractStatus.CREATED;
+        this.contractAddress = contractAddress;
+        this.contractCreatedAt = LocalDateTime.now();
+    }
+
+    /** Once contract creation has started, tasks, weights, members and stakes are fixed. */
+    public boolean isLocked() {
+        return contractStatus != ContractStatus.NONE;
+    }
+
+    private void requireUnlocked() {
+        if (isLocked()) {
+            throw new IllegalStateException("The project's smart contract has been created, so it can't be changed");
+        }
     }
 
     public boolean isMember(User user) { return users.contains(user); }
@@ -176,6 +235,10 @@ public class Project {
     public Set<User> stakedUsers() { return stakedUsers; }
     public List<Task> tasks() { return tasks; }
     public List<Invite> invites() { return invites; }
+    public ContractStatus contractStatus() { return contractStatus; }
+    public Long poolId() { return poolId; }
+    public String contractAddress() { return contractAddress; }
+    public LocalDateTime contractCreatedAt() { return contractCreatedAt; }
 
     public void setName(String name) { this.name = name; }
     public void setProjectDescription(String projectDescription) { this.projectDescription = projectDescription; }

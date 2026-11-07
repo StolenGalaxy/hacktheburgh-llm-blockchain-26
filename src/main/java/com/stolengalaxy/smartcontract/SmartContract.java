@@ -21,6 +21,7 @@ import org.web3j.tx.response.PollingTransactionReceiptProcessor;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +53,11 @@ public class SmartContract implements ISmartContract {
 
     @Override
     public void deposit(float money) {
+        deposit(new BigDecimal(Float.toString(money)).setScale(6, RoundingMode.DOWN));
+    }
+
+    @Override
+    public void deposit(BigDecimal money) {
         Uint256 amount = new Uint256(toUnits(money));
         call(usdcContract, "approve", new Address(poolContract), amount); // let the pool take the USDC
         call(poolContract, "deposit", new Uint256(poolId), amount);
@@ -106,5 +112,10 @@ public class SmartContract implements ISmartContract {
     /** USDC has 6 decimals, so 12.5 USDC is 12,500,000 units. Goes via the decimal string so 0.1f is exactly 100,000. */
     static BigInteger toUnits(float usdc) {
         return new BigDecimal(Float.toString(usdc)).movePointRight(6).toBigInteger();
+    }
+
+    /** Exact conversion; throws if {@code usdc} has more than 6 decimal places. */
+    static BigInteger toUnits(BigDecimal usdc) {
+        return usdc.movePointRight(6).toBigIntegerExact();
     }
 }

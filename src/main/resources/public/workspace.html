@@ -80,7 +80,7 @@
               </div>
               <div class="row">
                 <button class="btn" type="button" data-open-dialog="edit-weights" id="edit-weights-button">Edit weights</button>
-                <button class="btn" type="button" data-open-dialog="add-task">+ Add task</button>
+                <button class="btn" type="button" data-open-dialog="add-task" id="add-task-button">+ Add task</button>
               </div>
             </div>
 
@@ -117,7 +117,7 @@
             <section class="card stack">
               <div class="row between">
                 <h2>The team</h2>
-                <button class="link-btn" type="button" data-open-dialog="invite">+ Invite</button>
+                <button class="link-btn" type="button" data-open-dialog="invite" id="invite-button">+ Invite</button>
               </div>
               <ul class="member-list" id="member-list"></ul>
               <div class="stack" id="pending-invites-section" hidden>
@@ -131,10 +131,12 @@
               <h2>Smart contract</h2>
               <p class="muted small" id="contract-status"></p>
               <ul class="checklist small" id="contract-blockers"></ul>
-              <form method="post" action="/contract">
+              <dl class="details small" id="contract-details" hidden></dl>
+              <form method="post" action="/contract" id="contract-form">
                 <input type="hidden" name="projectId">
                 <button class="btn primary wide" type="submit" id="contract-button" disabled>Create smart contract</button>
               </form>
+              <p class="muted small">Mock USDC on a local test chain. No real funds.</p>
             </section>
 
             <button class="link-btn" type="button" data-open-dialog="evaluation">How evaluation works ↗</button>
