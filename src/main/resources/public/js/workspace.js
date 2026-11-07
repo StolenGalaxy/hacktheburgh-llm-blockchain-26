@@ -168,6 +168,7 @@ function renderProject(project, me) {
 
   renderWeights(project);
   renderContract(project);
+  startCountdown(project.deadlineEpochMillis);
 
   // Once the contract exists, tasks, weights, members and stakes are fixed
   for (const id of ["#add-task-button", "#invite-button"]) $(id).hidden = project.locked;
@@ -175,6 +176,35 @@ function renderProject(project, me) {
 
   document.querySelectorAll('input[name="projectId"]').forEach((input) => { input.value = project.id; });
   $("#project-view").hidden = false;
+}
+
+// Counts down to the deadline, after which evaluation can be requested. Ticks every second.
+let countdownTimer;
+function startCountdown(deadlineMillis) {
+  clearInterval(countdownTimer);
+  const clock = $("#evaluation-countdown");
+  const label = $("#evaluation-countdown-label");
+  const pad = (n) => String(n).padStart(2, "0");
+
+  function tick() {
+    const left = Math.max(0, Math.floor((deadlineMillis - Date.now()) / 1000));
+    if (left === 0) {
+      clearInterval(countdownTimer);
+      clock.className = "countdown done";
+      clock.textContent = "✓ Ready for evaluation";
+      label.textContent = "The deadline has passed, so evaluation can now be requested.";
+      return;
+    }
+    const days = Math.floor(left / 86400);
+    const hours = Math.floor((left % 86400) / 3600);
+    const minutes = Math.floor((left % 3600) / 60);
+    const seconds = left % 60;
+    clock.className = "countdown";
+    clock.textContent = `${days > 0 ? `${days}d ` : ""}${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
+    label.textContent = "until evaluation can be requested (the project deadline)";
+  }
+  tick();
+  countdownTimer = setInterval(tick, 1000);
 }
 
 // Task weights must total 100%. Pending invites hold their weight until they're answered.

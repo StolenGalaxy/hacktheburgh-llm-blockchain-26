@@ -105,8 +105,8 @@ public class Bank implements AutoCloseable {
             stopLeftoverAnvil(stateDir);
             cmd.addAll(List.of("--state", stateDir.resolve(STATE_FILE).toString(), "--state-interval", "1"));
         }
-        anvil = new ProcessBuilder(cmd)
-                .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+        anvil = startFoundry(new ProcessBuilder(cmd)
+                .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD));
         rpc = new HttpService(rpcUrl);
         web3j = Web3j.build(rpc);
         ownerTx = new RawTransactionManager(web3j, owner, CHAIN_ID);
@@ -320,7 +320,7 @@ public class Bank implements AutoCloseable {
         try {
             long pid = Long.parseLong(Files.readString(pidFile).trim());
             ProcessHandle.of(pid)
-                    .filter(handle -> handle.info().command().map(c -> c.endsWith("anvil")).orElse(false))
+                    .filter(handle -> handle.info().command().map(c -> c.endsWith("anvil") || c.endsWith("anvil.exe")).orElse(false))
                     .ifPresent(handle -> {
                         handle.destroy();
                         try {
@@ -361,7 +361,7 @@ public class Bank implements AutoCloseable {
                 "--out", "build/forge/out", "--cache-path", "build/forge/cache",
                 "--rpc-url", rpcUrl, "--private-key", OWNER_KEY, "--broadcast"));
         cmd.addAll(List.of(args));
-        Process forge = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+        Process forge = startFoundry(new ProcessBuilder(cmd).redirectErrorStream(true));
         String output = new String(forge.getInputStream().readAllBytes());
         Matcher m = Pattern.compile("Deployed to: (0x[0-9a-fA-F]{40})").matcher(output);
         if (!m.find()) {
@@ -370,12 +370,25 @@ public class Bank implements AutoCloseable {
         return m.group(1);
     }
 
+    private static final boolean WINDOWS = System.getProperty("os.name").toLowerCase().startsWith("windows");
+
     /** Foundry's install folder, or just the name if it's on PATH. */
     private static String foundry(String tool) {
+        String exe = WINDOWS ? tool + ".exe" : tool;
         for (String dir : List.of(".foundry/bin", ".config/.foundry/bin")) {
-            Path path = Path.of(System.getProperty("user.home"), dir, tool);
+            Path path = Path.of(System.getProperty("user.home"), dir, exe);
             if (Files.isExecutable(path)) return path.toString();
         }
-        return tool;
+        return exe;
+    }
+
+    /** Starts a Foundry tool, with a clear message if Foundry isn't installed. */
+    private static Process startFoundry(ProcessBuilder builder) throws IOException {
+        try {
+            return builder.start();
+        } catch (IOException e) {
+            throw new IOException("Couldn't run '" + builder.command().get(0) + "'. Foundry (anvil + forge) must be installed"
+                    + " in ~/.foundry/bin or on PATH: https://getfoundry.sh", e);
+        }
     }
 }

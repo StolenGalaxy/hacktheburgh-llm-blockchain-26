@@ -99,6 +99,16 @@ input, select, textarea {
 }
 textarea { min-height: 80px; resize: vertical; }
 
+/* Amount input with a "$" shown inside the box, before what you type */
+.money-input { position: relative; display: block; font-weight: 400; }
+.money-input::before {
+  content: "$";
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.money-input input { padding-left: 28px; }
+
 .password { position: relative; display: block; }
 .password input { padding-right: 64px; }
 .password .link-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); }
@@ -277,6 +287,8 @@ textarea { min-height: 80px; resize: vertical; }
 .task-id { font: 11px ui-monospace, monospace; letter-spacing: 0.08em; color: var(--muted); }
 
 .pool-value { font-size: 38px; font-weight: 500; letter-spacing: -0.04em; }
+.countdown { font-size: 30px; font-weight: 500; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.countdown.done { color: var(--green); font-size: 22px; }
 
 .progress-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .progress-bar span { display: block; height: 100%; background: var(--green); }

@@ -51,7 +51,7 @@ final class Dtos {
     }
 
     record ProjectDto(int id, String name, String description, String repoUrl,
-                      String deadline, boolean deadlinePassed,
+                      String deadline, boolean deadlinePassed, long deadlineEpochMillis,
                       BigDecimal stakeAmount, BigDecimal poolTotal, BigDecimal poolTarget,
                       boolean youStaked, boolean youCreated, String createdBy,
                       int assignedWeight, int reservedWeight, List<String> contractBlockers,
@@ -61,6 +61,8 @@ final class Dtos {
             BigDecimal stake = project.stakeAmount();
             return new ProjectDto(project.projectID(), project.name(), project.projectDescription(), project.repoURL(),
                     DEADLINE_FORMAT.format(project.deadline()), project.deadline().isBefore(LocalDateTime.now()),
+                    // The deadline is entered in the server's time zone (as the contract uses it), so the browser counts down to the same instant
+                    project.deadline().atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
                     stake,
                     stake.multiply(BigDecimal.valueOf(project.stakedUsers().size())),
                     stake.multiply(BigDecimal.valueOf(project.users().size())),

@@ -94,6 +94,15 @@
 
           <!-- ===== Side panels ===== -->
           <aside class="side-col stack">
+            <section class="card stack" id="evaluation-card">
+              <h2>Evaluation</h2>
+              <div>
+                <div class="countdown" id="evaluation-countdown" role="timer" aria-live="off"></div>
+                <p class="muted small" id="evaluation-countdown-label"></p>
+              </div>
+              <button class="link-btn" type="button" data-open-dialog="evaluation" style="align-self: flex-start">How evaluation works ↗</button>
+            </section>
+
             <section class="card stack">
               <h2>The shared pool</h2>
               <div>
@@ -138,8 +147,6 @@
               </form>
               <p class="muted small">Mock USDC on a local test chain. No real funds.</p>
             </section>
-
-            <button class="link-btn" type="button" data-open-dialog="evaluation">How evaluation works ↗</button>
           </aside>
         </div>
       </div>
@@ -168,7 +175,7 @@
         <input name="deadline" type="datetime-local" required>
       </label>
       <label class="field">Stake per member
-        <input name="stake" type="number" min="0" step="any" value="25" required>
+        <span class="money-input"><input name="stake" type="number" min="0" step="any" value="25" required></span>
       </label>
     </div>
     <p class="muted small">You can invite members after the project is created.</p>
