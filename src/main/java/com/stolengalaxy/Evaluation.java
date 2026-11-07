@@ -7,7 +7,7 @@ import java.util.List;
 public record Evaluation(
         @SerializedName("user_id") int userId,
         //List<String> evaluations){
-        int score,
+        Integer score,
         String feedback,
         List<String> evidence){
 }
