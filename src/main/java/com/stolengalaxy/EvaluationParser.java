@@ -1,22 +1,22 @@
 package com.stolengalaxy;
 import com.google.gson.*;
+import com.google.gson.reflect.TypeToken;
+import java.lang.reflect.Type;
 import java.util.List;
-import java.util.HashSet;
 public class EvaluationParser {
-    Gson gson = new Gson();
+    private static final Gson gson = new Gson();
+    private static final Type EVALUATION_LIST = new TypeToken<List<Evaluation>>(){}.getType();
 
-    private record Response(List<Evaluation> evaluations) {}
-
-    public List<Evaluation> parse(JsonObject json) {
-        Response response = gson.fromJson(json, Response.class);
-        if (response == null){
+    public static List<Evaluation> parse(JsonArray json) {
+        List<Evaluation> evaluations = gson.fromJson(json, EVALUATION_LIST);
+        if (evaluations == null || evaluations.isEmpty()){
             throw new IllegalArgumentException("AI reply has no evaluations");
         }
-        for (Evaluation evaluation : response.evaluations()){
+        for (Evaluation evaluation : evaluations){
             if (evaluation.score() == null || evaluation.score() < 0 || evaluation.score() > 10){
                 throw new IllegalArgumentException("AI reply has invalid score " + evaluation.userId() + ": " + evaluation.score());
             }
         }
-        return response.evaluations();
+        return evaluations;
     }
 }

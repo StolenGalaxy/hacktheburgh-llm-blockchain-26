@@ -56,7 +56,7 @@ public class Gemini {
                 .build();
 
         Client client = Client.builder().apiKey(System.getenv("GEMINI_API_KEY")).build();
-        GenerateContentResponse response = client.models.generateContent("gemini-3.5-flash-lite", input, config);
+        GenerateContentResponse response = client.models.generateContent("gemini-3.8-flash", input, config);
 
         String text = response.text();
         return JsonParser.parseString(text).getAsJsonObject();
