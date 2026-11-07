@@ -20,6 +20,9 @@ dependencies {
     implementation("com.google.code.gson:gson:2.15.0")
     implementation("io.javalin:javalin:6.7.0")
     implementation("org.slf4j:slf4j-simple:2.0.17")
+
+    implementation("org.eclipse.persistence:eclipselink:5.0.2")
+    implementation("org.xerial:sqlite-jdbc:3.53.4.0")
 }
 
 tasks.test {

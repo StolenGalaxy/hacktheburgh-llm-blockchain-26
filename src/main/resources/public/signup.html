@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FairShare — Create an account</title>
+  <title>CommitD — Create an account</title>
   <link rel="stylesheet" href="/css/style.css">
   <script src="/js/password-toggle.js" defer></script>
+  <script src="/js/form-error.js" defer></script>
 </head>
 <body>
 <main class="auth-page">
   <section class="auth-card">
-    <a class="brand" href="/"><span class="brand-mark">✓</span>FairShare.</a>
+    <a class="brand" href="/"><span class="brand-mark">✓</span>CommitD.</a>
 
     <h1>Make room for more.</h1>
     <p>Create your account. A fresh start is a few details away.</p>
@@ -38,7 +39,7 @@
 
       <label class="field">
         GitHub username
-        <input name="github" type="email" placeholder="you@github.com" required>
+        <input name="github" type="text" placeholder="your-github-username" autocomplete="username" maxlength="39" pattern="@?[A-Za-z0-9\-]+" required>
       </label>
 
       <p class="error" role="alert"></p>
