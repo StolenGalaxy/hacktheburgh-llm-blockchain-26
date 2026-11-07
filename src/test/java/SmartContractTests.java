@@ -1,5 +1,5 @@
 import com.stolengalaxy.smartcontract.SmartContract;
-import com.stolengalaxy.smartcontract.User;
+import com.stolengalaxy.User;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;

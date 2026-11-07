@@ -15,6 +15,8 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     implementation("org.web3j:core:6.1.0")
+    implementation("com.google.genai:google-genai:1.80.0")
+    implementation("com.google.code.gson:gson:2.15.0")
 }
 
 tasks.test {

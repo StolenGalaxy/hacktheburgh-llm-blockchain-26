@@ -1,5 +1,6 @@
 package com.stolengalaxy.smartcontract;
 
+import com.stolengalaxy.User;
 import org.web3j.abi.FunctionEncoder;
 import org.web3j.abi.FunctionReturnDecoder;
 import org.web3j.abi.TypeReference;
