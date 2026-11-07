@@ -106,8 +106,9 @@ public class Project {
         }
     }
 
-    /** Removes a member, their task and their stake record. */
+    /** Removes a member, their task and their stake record. Only before the contract exists, since it holds their stake. */
     public void removeUser(User user) {
+        requireUnlocked();
         users.remove(user);
         user.projects().remove(this);
         stakedUsers.remove(user);
@@ -115,6 +116,19 @@ public class Project {
             tasks.remove(task);
             user.tasks().remove(task);
         });
+    }
+
+    /**
+     * Unlinks the project from its members before it's deleted with {@code em.remove}. The tasks, invites and
+     * membership/stake rows go with the project; this updates the users' side so cached users don't keep it.
+     * Only before the contract exists: after that, the pool on-chain holds the members' stakes.
+     */
+    public void prepareForDelete() {
+        requireUnlocked();
+        for (User user : users) {
+            user.projects().remove(this);
+            user.tasks().removeAll(tasks);
+        }
     }
 
     /** Assigns a task to a user, adding them as a member if they aren't one already. */

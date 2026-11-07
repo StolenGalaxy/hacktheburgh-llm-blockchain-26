@@ -17,10 +17,11 @@ function el(tag, props = {}, ...children) {
 }
 
 const avatar = (initials) => el("span", { class: "avatar", text: initials });
-const money = (amount) => Number(amount).toFixed(2);
-const shortAmount = (amount) => String(Number(amount));
-// USDC has 6 decimals: show at least 2 and up to all 6, e.g. 24.691356 or 15.00
-const usdc = (amount) => Number(amount).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
+// Every amount shown on the page goes through one of these, so they all get the "$"
+const money = (amount) => `$${Number(amount).toFixed(2)}`;
+const shortAmount = (amount) => `$${Number(amount)}`;
+// USDC has 6 decimals: show at least 2 and up to all 6, e.g. $24.691356 or $15.00
+const usdc = (amount) => `$${Number(amount).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
 
 async function getJson(url) {
   const response = await fetch(url, { headers: { Accept: "application/json" } });
@@ -170,6 +171,14 @@ function renderProject(project, me) {
   renderContract(project);
   startCountdown(project.deadlineEpochMillis);
 
+  // Until the contract is created, members can leave and the creator can delete the project.
+  // The creator can't leave, since only they can create the contract.
+  $("#leave-section").hidden = project.locked;
+  $("#leave-button").hidden = project.youCreated;
+  $("#delete-button").hidden = !project.youCreated;
+  $("#leave-title").textContent = `Leave ${project.name}?`;
+  $("#delete-title").textContent = `Delete ${project.name}?`;
+
   // Once the contract exists, tasks, weights, members and stakes are fixed
   for (const id of ["#add-task-button", "#invite-button"]) $(id).hidden = project.locked;
   if (project.locked) $("#edit-weights-button").hidden = true;
@@ -184,10 +193,14 @@ function startCountdown(deadlineMillis) {
   clearInterval(countdownTimer);
   const clock = $("#evaluation-countdown");
   const label = $("#evaluation-countdown-label");
+  const requestButton = $("#request-evaluation-button");
   const pad = (n) => String(n).padStart(2, "0");
 
   function tick() {
     const left = Math.max(0, Math.floor((deadlineMillis - Date.now()) / 1000));
+    // Anyone can request evaluation, but only once the deadline has passed
+    requestButton.disabled = left > 0;
+    requestButton.title = left > 0 ? "Available once the project deadline has passed" : "";
     if (left === 0) {
       clearInterval(countdownTimer);
       clock.className = "countdown done";
@@ -206,6 +219,9 @@ function startCountdown(deadlineMillis) {
   tick();
   countdownTimer = setInterval(tick, 1000);
 }
+
+// TODO: send the evaluation request to the server once that's built. For now clicking does nothing.
+$("#request-evaluation-button").addEventListener("click", () => {});
 
 // Task weights must total 100%. Pending invites hold their weight until they're answered.
 function renderWeights(project) {
