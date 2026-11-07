@@ -96,19 +96,19 @@ public class Project {
     }
 
     /** Assigns a task to a user, adding them as a member if they aren't one already. */
-    public Task assignTask(User user, String objective, String details) {
+    public Task assignTask(User user, String objective, int weightPercentage) {
         if (taskFor(user).isPresent()) {
             throw new IllegalStateException(user.username() + " already has a task in this project");
         }
         addUser(user);
-        Task task = new Task(this, user, objective, details);
+        Task task = new Task(this, user, objective, weightPercentage);
         tasks.add(task);
         user.tasks().add(task);
         return task;
     }
 
-    public Invite invite(User invitedBy, String email, String objective) {
-        Invite invite = new Invite(this, invitedBy, email, objective);
+    public Invite invite(User invitedBy, String email, String objective, int weightPercentage) {
+        Invite invite = new Invite(this, invitedBy, email, objective, weightPercentage);
         invites.add(invite);
         return invite;
     }
@@ -118,6 +118,44 @@ public class Project {
             throw new IllegalStateException(user.username() + " is not a member of this project");
         }
         stakedUsers.add(user);
+    }
+
+    /** Sum of task weights. Must be exactly 100 before the contract is created. */
+    public int assignedWeight() {
+        return tasks.stream().mapToInt(Task::weightPercentage).sum();
+    }
+
+    /** Weight held by pending invites; it becomes task weight when they're accepted. */
+    public int reservedWeight() {
+        return invites.stream()
+                .filter(invite -> invite.status() == Invite.Status.PENDING)
+                .mapToInt(Invite::weightPercentage).sum();
+    }
+
+    /**
+     * What still stops the smart contract being created; empty when it's ready.
+     * Ready means every member has a task, every member has staked, and task weights total 100%.
+     */
+    public List<String> contractBlockers() {
+        List<String> blockers = new ArrayList<>();
+        if (deadline.isBefore(LocalDateTime.now())) {
+            blockers.add("The deadline has passed");
+        }
+        for (User user : users) {
+            if (taskFor(user).isEmpty()) {
+                blockers.add(user.username() + " has no task");
+            }
+            if (!hasStaked(user)) {
+                blockers.add(user.username() + " hasn't staked");
+            }
+        }
+        if (assignedWeight() != 100) {
+            blockers.add("Task weights total " + assignedWeight() + "%, not 100%");
+        }
+        if (reservedWeight() > 0) {
+            blockers.add("Pending invitations need a response");
+        }
+        return blockers;
     }
 
     public boolean isMember(User user) { return users.contains(user); }

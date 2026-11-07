@@ -2,6 +2,7 @@ package com.stolengalaxy.web;
 
 import com.stolengalaxy.Invite;
 import com.stolengalaxy.Project;
+import com.stolengalaxy.Task;
 import com.stolengalaxy.User;
 import com.stolengalaxy.db.Database;
 import io.javalin.Javalin;
@@ -18,7 +19,9 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -79,9 +82,11 @@ public final class WebRoutes {
         app.post("/tasks", WebRoutes::addTask);
         app.post("/stake", WebRoutes::stake);
         app.post("/invites", WebRoutes::invite);
+        app.post("/tasks/weights", WebRoutes::updateWeights);
         app.post("/invites/respond", WebRoutes::respondToInvite);
+        app.post("/contract", WebRoutes::createContract);
 
-        app.get("/api/health", ctx -> ctx.json(java.util.Map.of("status", "ok")));
+        app.get("/api/health", ctx -> ctx.json(Map.of("status", "ok")));
         app.get("/api/me", WebRoutes::me);
         app.get("/api/projects/{id}", WebRoutes::project);
     }
@@ -177,7 +182,7 @@ public final class WebRoutes {
         int projectId = intParam(ctx, "projectId", "/workspace.html");
         String page = projectPage(projectId);
         String title = required(ctx, "title", 90, page, "Task");
-        String details = optional(ctx, "description", 3000, page, "Details");
+        int weight = weight(ctx, "weight", page);
         int memberId = intParam(ctx, "member", page);
 
         Database.transaction(em -> {
@@ -189,7 +194,8 @@ public final class WebRoutes {
             if (project.taskFor(member).isPresent()) {
                 throw new FormException(page, member.username() + " already has a task in this project.");
             }
-            project.assignTask(member, title, details);
+            checkWeightFits(project, weight, page);
+            project.assignTask(member, title, weight);
             return null;
         });
         ctx.redirect(page, HttpStatus.SEE_OTHER);
@@ -222,6 +228,7 @@ public final class WebRoutes {
         String page = projectPage(projectId);
         String email = email(ctx, page);
         String task = required(ctx, "task", 90, page, "Task");
+        int weight = weight(ctx, "weight", page);
 
         Database.transaction(em -> {
             Project project = memberProject(em, projectId, userId);
@@ -235,10 +242,61 @@ public final class WebRoutes {
             if (alreadyInvited) {
                 throw new FormException(page, email + " already has a pending invitation.");
             }
-            project.invite(inviter, email, task);
+            checkWeightFits(project, weight, page);
+            project.invite(inviter, email, task, weight);
             return null;
         });
         ctx.redirect(page, HttpStatus.SEE_OTHER);
+    }
+
+    /** Sets every task's weight at once, from fields named {@code weight-<taskId>}. */
+    private static void updateWeights(Context ctx) {
+        int userId = requireUserId(ctx);
+        int projectId = intParam(ctx, "projectId", "/workspace.html");
+        String page = projectPage(projectId);
+
+        Database.transaction(em -> {
+            Project project = memberProject(em, projectId, userId);
+            Map<Task, Integer> weights = new LinkedHashMap<>();
+            for (Task task : project.tasks()) {
+                weights.put(task, weight(ctx, "weight-" + task.taskID(), page));
+            }
+            int total = weights.values().stream().mapToInt(Integer::intValue).sum() + project.reservedWeight();
+            if (total > 100) {
+                throw new FormException(page, "Weights would total " + total + "%"
+                        + (project.reservedWeight() > 0 ? " (including " + project.reservedWeight() + "% held by pending invitations)" : "")
+                        + ". The total can't be more than 100%.");
+            }
+            weights.forEach(Task::setWeightPercentage);
+            return null;
+        });
+        ctx.redirect(page, HttpStatus.SEE_OTHER);
+    }
+
+    /**
+     * Creates the project's smart contract. Only the creator can do this, once every member has a task,
+     * every member has staked and the task weights total 100%.
+     */
+    private static void createContract(Context ctx) {
+        int userId = requireUserId(ctx);
+        int projectId = intParam(ctx, "projectId", "/workspace.html");
+        String page = projectPage(projectId);
+
+        Database.read(em -> {
+            Project project = memberProject(em, projectId, userId);
+            if (project.createdBy().userID() != userId) {
+                throw new FormException(page, "Only the project's creator can create the smart contract.");
+            }
+            List<String> blockers = project.contractBlockers();
+            if (!blockers.isEmpty()) {
+                throw new FormException(page, "Not ready yet: " + String.join("; ", blockers) + ".");
+            }
+            // TODO: create the on-chain pool here (Bank.ownerContract / createPool) and store its poolId on the project.
+            return null;
+        });
+        ctx.redirect(page + "&notice=" + URLEncoder.encode(
+                "Everything's ready. Creating the smart contract isn't wired up yet.", StandardCharsets.UTF_8),
+                HttpStatus.SEE_OTHER);
     }
 
     private static void respondToInvite(Context ctx) {
@@ -369,6 +427,28 @@ public final class WebRoutes {
             throw new FormException(page, label + " must be at most " + maxLength + " characters.");
         }
         return value;
+    }
+
+    /** A task weight from the form: a whole number of percent, 1-100. */
+    private static int weight(Context ctx, String field, String page) {
+        try {
+            int weight = Integer.parseInt(ctx.formParam(field).trim());
+            if (weight >= 1 && weight <= 100) {
+                return weight;
+            }
+        } catch (NullPointerException | NumberFormatException e) {
+            // fall through
+        }
+        throw new FormException(page, "Each weight must be a whole number from 1 to 100.");
+    }
+
+    /** Task weights plus weights held by pending invites can't go over 100%. */
+    private static void checkWeightFits(Project project, int weight, String page) {
+        int free = 100 - project.assignedWeight() - project.reservedWeight();
+        if (weight > free) {
+            throw new FormException(page, "Only " + free + "% of the project's weight is left. "
+                    + "Lower this task's weight, or rebalance the others with Edit weights.");
+        }
     }
 
     private static int intParam(Context ctx, String field, String page) {

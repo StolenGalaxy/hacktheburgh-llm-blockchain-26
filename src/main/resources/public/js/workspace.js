@@ -62,7 +62,7 @@ function renderInbox(invites) {
     el("article", { class: "card stack" },
       el("h3", { text: invite.projectName }),
       el("p", { class: "muted small", text: `From ${invite.from} · Due ${invite.deadline} · Stake ${shortAmount(invite.stake)}` }),
-      el("p", { class: "small" }, el("strong", { text: "Your task: " }), invite.task),
+      el("p", { class: "small" }, el("strong", { text: "Your task: " }), `${invite.task} (${invite.weightPercentage}%)`),
       el("form", { class: "dialog-actions", method: "post", action: "/invites/respond" },
         el("input", { type: "hidden", name: "inviteId", value: invite.id }),
         el("button", { class: "btn", name: "response", value: "declined", text: "Decline" }),
@@ -108,9 +108,9 @@ function renderProject(project, me) {
     ? tasks.map((task) => el("li", { class: "card task" },
         el("span", { class: "task-id", text: task.label }),
         el("h3", { text: task.title }),
-        task.details ? el("p", { class: "muted small", text: task.details }) : null,
-        el("div", { class: "row small" },
-          el("span", { class: "row" }, avatar(task.assigneeInitials), task.assigneeName))))
+        el("div", { class: "row between small" },
+          el("span", { class: "row" }, avatar(task.assigneeInitials), task.assigneeName),
+          el("span", { class: "badge", text: `${task.weightPercentage}%` }))))
     : [el("li", { class: "muted", text: mineOnly ? "You don't have a task in this project yet." : "No tasks yet." })]));
 
   // Pool
@@ -147,12 +147,70 @@ function renderProject(project, me) {
   const firstFree = project.members.find((member) => !member.hasTask);
   if (firstFree) $("#member-select").value = firstFree.userId;
 
+  renderWeights(project);
+  renderContract(project);
+
   document.querySelectorAll('input[name="projectId"]').forEach((input) => { input.value = project.id; });
   $("#project-view").hidden = false;
 }
 
+// Task weights must total 100%. Pending invites hold their weight until they're answered.
+function renderWeights(project) {
+  const total = project.assignedWeight;
+  const free = 100 - total - project.reservedWeight;
+  const badge = $("#weight-total");
+  badge.className = total === 100 ? "badge green" : "badge amber";
+  badge.textContent = `${total}% of 100% assigned`;
+  badge.hidden = project.tasks.length === 0;
+  $("#edit-weights-button").hidden = project.tasks.length === 0;
+
+  // New task / invite weight inputs: default to (and cap at) what's left
+  const reservedNote = project.reservedWeight > 0 ? ` (${project.reservedWeight}% is held by pending invitations)` : "";
+  for (const input of [$("#task-weight"), $("#invite-weight")]) {
+    input.max = Math.max(free, 1);
+    input.value = free > 0 ? free : "";
+    input.closest("label").querySelector("[data-weight-hint]").textContent = free > 0
+      ? `${free}% of the project's weight is left${reservedNote}.`
+      : `No weight is left${reservedNote}. Lower other tasks with Edit weights first.`;
+  }
+
+  // Edit weights dialog: one input per task, with a live total
+  const inputs = project.tasks.map((task) => {
+    const input = el("input", { type: "number", name: `weight-${task.id}`, min: 1, max: 100, step: 1, required: "", value: task.weightPercentage });
+    input.addEventListener("input", updateDialogTotal);
+    return input;
+  });
+  $("#weights-list").replaceChildren(...project.tasks.map((task, i) =>
+    el("label", { class: "weight-row small" }, el("span", { text: `${task.title} · ${task.assigneeName}` }), inputs[i])));
+
+  function updateDialogTotal() {
+    const sum = inputs.reduce((acc, input) => acc + (Number(input.value) || 0), 0) + project.reservedWeight;
+    const line = $("#weights-dialog-total");
+    line.textContent = `Total: ${sum}%${reservedNote}${sum > 100 ? " — that's more than 100%" : sum < 100 ? ` — ${100 - sum}% unassigned` : " ✓"}`;
+    line.className = sum > 100 ? "small error" : "small";
+  }
+  updateDialogTotal();
+}
+
+// The creator can create the contract once every member has a task, has staked, and weights total 100%.
+function renderContract(project) {
+  const blockers = project.contractBlockers;
+  const ready = blockers.length === 0;
+  $("#contract-blockers").replaceChildren(...blockers.map((text) => el("li", { text })));
+  $("#contract-button").disabled = !ready || !project.youCreated;
+  $("#contract-button").hidden = !project.youCreated;
+  $("#contract-status").textContent = ready
+    ? (project.youCreated ? "Everyone has a task and has staked. Ready to create." : `Ready. Waiting for ${project.createdBy} to create it.`)
+    : (project.youCreated ? "You can create it once these are done:" : `${project.createdBy} can create it once these are done:`);
+}
+
 async function load() {
   showError(params.get("error"));
+  const notice = params.get("notice");
+  if (notice) {
+    $("#page-notice").textContent = notice;
+    $("#page-notice").hidden = false;
+  }
   const me = await getJson("/api/me");
   renderAccount(me);
   renderInbox(me.invites);

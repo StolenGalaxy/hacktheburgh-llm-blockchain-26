@@ -32,6 +32,10 @@ public class Invite {
     @Column(nullable = false)
     private String objective;
 
+    /** Weight of the invited task, reserved out of the project's 100% while the invite is pending. */
+    @Column(nullable = false)
+    private int weightPercentage;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status = Status.PENDING;
@@ -40,16 +44,17 @@ public class Invite {
         // for JPA
     }
 
-    Invite(Project project, User invitedBy, String email, String objective) {
+    Invite(Project project, User invitedBy, String email, String objective, int weightPercentage) {
         this.project = project;
         this.invitedBy = invitedBy;
         this.email = email;
         this.objective = objective;
+        this.weightPercentage = weightPercentage;
     }
 
     /** Adds the user to the project with the invited task. */
     public void accept(User user) {
-        project.assignTask(user, objective, null);
+        project.assignTask(user, objective, weightPercentage);
         status = Status.ACCEPTED;
     }
 
@@ -62,5 +67,6 @@ public class Invite {
     public User invitedBy() { return invitedBy; }
     public String email() { return email; }
     public String objective() { return objective; }
+    public int weightPercentage() { return weightPercentage; }
     public Status status() { return status; }
 }

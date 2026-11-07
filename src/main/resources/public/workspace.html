@@ -41,6 +41,7 @@
 
     <main class="content stack">
       <p class="error" id="page-error" role="alert"></p>
+      <div class="notice" id="page-notice" role="status" hidden></div>
 
       <!-- Shown when the user has no projects -->
       <section class="card stack" id="empty-state" hidden>
@@ -72,9 +73,15 @@
           <section class="primary-col stack">
             <div class="notice" id="stake-notice" hidden></div>
 
-            <div class="row between">
-              <h2>Tasks</h2>
-              <button class="btn" type="button" data-open-dialog="add-task">+ Add task</button>
+            <div class="row between wrap">
+              <div class="row">
+                <h2>Tasks</h2>
+                <span class="badge" id="weight-total"></span>
+              </div>
+              <div class="row">
+                <button class="btn" type="button" data-open-dialog="edit-weights" id="edit-weights-button">Edit weights</button>
+                <button class="btn" type="button" data-open-dialog="add-task">+ Add task</button>
+              </div>
             </div>
 
             <nav class="tabs">
@@ -113,6 +120,16 @@
                 <button class="link-btn" type="button" data-open-dialog="invite">+ Invite</button>
               </div>
               <ul class="member-list" id="member-list"></ul>
+            </section>
+
+            <section class="card stack">
+              <h2>Smart contract</h2>
+              <p class="muted small" id="contract-status"></p>
+              <ul class="checklist small" id="contract-blockers"></ul>
+              <form method="post" action="/contract">
+                <input type="hidden" name="projectId">
+                <button class="btn primary wide" type="submit" id="contract-button" disabled>Create smart contract</button>
+              </form>
             </section>
 
             <button class="link-btn" type="button" data-open-dialog="evaluation">How evaluation works ↗</button>
@@ -162,11 +179,12 @@
     <label class="field">Task
       <input name="title" maxlength="90" required>
     </label>
-    <label class="field">Details (optional)
-      <textarea name="description" maxlength="3000"></textarea>
-    </label>
     <label class="field">Assigned to
       <select name="member" id="member-select" required></select>
+    </label>
+    <label class="field">Weight (%)
+      <input name="weight" id="task-weight" type="number" min="1" max="100" step="1" required>
+      <span class="hint" data-weight-hint></span>
     </label>
     <div class="dialog-actions">
       <button class="btn" type="submit" formmethod="dialog" formnovalidate>Cancel</button>
@@ -197,10 +215,28 @@
     <label class="field">Task
       <input name="task" maxlength="90" placeholder="What will they work on?" required>
     </label>
+    <label class="field">Weight (%)
+      <input name="weight" id="invite-weight" type="number" min="1" max="100" step="1" required>
+      <span class="hint" data-weight-hint></span>
+    </label>
     <p class="muted small">They join only after accepting.</p>
     <div class="dialog-actions">
       <button class="btn" type="submit" formmethod="dialog" formnovalidate>Cancel</button>
       <button class="btn primary" type="submit">Send invitation</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="edit-weights">
+  <form class="stack" method="post" action="/tasks/weights">
+    <input type="hidden" name="projectId">
+    <h2>Edit weights</h2>
+    <p class="muted small">Each task's share of the project's work. They must total 100% before the smart contract can be created.</p>
+    <div class="stack" id="weights-list"></div>
+    <p class="small" id="weights-dialog-total"></p>
+    <div class="dialog-actions">
+      <button class="btn" type="submit" formmethod="dialog" formnovalidate>Cancel</button>
+      <button class="btn primary" type="submit">Save weights</button>
     </div>
   </form>
 </dialog>

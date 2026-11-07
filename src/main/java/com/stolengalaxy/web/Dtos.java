@@ -38,18 +38,22 @@ final class Dtos {
         }
     }
 
-    record InviteDto(int id, String projectName, String from, String deadline, BigDecimal stake, String task) {
+    record InviteDto(int id, String projectName, String from, String deadline, BigDecimal stake,
+                     String task, int weightPercentage) {
         static InviteDto of(Invite invite) {
             Project project = invite.project();
             return new InviteDto(invite.inviteID(), project.name(), invite.invitedBy().username(),
-                    DEADLINE_FORMAT.format(project.deadline()), project.stakeAmount(), invite.objective());
+                    DEADLINE_FORMAT.format(project.deadline()), project.stakeAmount(),
+                    invite.objective(), invite.weightPercentage());
         }
     }
 
     record ProjectDto(int id, String name, String description, String repoUrl,
                       String deadline, boolean deadlinePassed,
                       BigDecimal stakeAmount, BigDecimal poolTotal, BigDecimal poolTarget,
-                      boolean youStaked, List<MemberDto> members, List<TaskDto> tasks) {
+                      boolean youStaked, boolean youCreated, String createdBy,
+                      int assignedWeight, int reservedWeight, List<String> contractBlockers,
+                      List<MemberDto> members, List<TaskDto> tasks) {
         static ProjectDto of(Project project, User viewer) {
             BigDecimal stake = project.stakeAmount();
             return new ProjectDto(project.projectID(), project.name(), project.projectDescription(), project.repoURL(),
@@ -58,6 +62,8 @@ final class Dtos {
                     stake.multiply(BigDecimal.valueOf(project.stakedUsers().size())),
                     stake.multiply(BigDecimal.valueOf(project.users().size())),
                     project.hasStaked(viewer),
+                    project.createdBy() == viewer, project.createdBy().username(),
+                    project.assignedWeight(), project.reservedWeight(), project.contractBlockers(),
                     project.users().stream().map(user -> MemberDto.of(project, user)).toList(),
                     project.tasks().stream().map(TaskDto::of).toList());
         }
@@ -70,10 +76,10 @@ final class Dtos {
         }
     }
 
-    record TaskDto(int id, String title, String details, int assigneeId, String assigneeName, String assigneeInitials) {
+    record TaskDto(int id, String title, int weightPercentage, int assigneeId, String assigneeName, String assigneeInitials) {
         static TaskDto of(Task task) {
             User user = task.user();
-            return new TaskDto(task.taskID(), task.objective(), task.details(),
+            return new TaskDto(task.taskID(), task.objective(), task.weightPercentage(),
                     user.userID(), user.username(), initials(user.username()));
         }
     }

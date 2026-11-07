@@ -19,41 +19,38 @@ public class Task {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    /** Short statement of the task, e.g. "Build the project dashboard". */
+    /** What the user has to do, e.g. "Build the project dashboard". */
     @Lob
     @Column(nullable = false)
     private String objective;
 
-    /** Optional extra detail about the task. */
-    @Lob
-    private String details;
-
+    /** This task's share of the project's work, 1-100. A project's task weights must total 100 before its contract is created. */
+    @Column(nullable = false)
     private int weightPercentage;
 
     protected Task() {
         // for JPA
     }
 
-    Task(Project project, User user, String objective, String details) {
+    Task(Project project, User user, String objective, int weightPercentage) {
         this.project = project;
         this.user = user;
         this.objective = objective;
-        this.details = details;
+        this.weightPercentage = weightPercentage;
     }
 
     public int taskID() { return taskID; }
     public Project project() { return project; }
     public User user() { return user; }
     public String objective() { return objective; }
-    public String details() { return details; }
     public int weightPercentage() { return weightPercentage; }
 
     public void setObjective(String objective) { this.objective = objective; }
-    public void setDetails(String details) { this.details = details; }
     public void setWeightPercentage(int weightPercentage) { this.weightPercentage = weightPercentage; }
 
     @Override
     public String toString() {
-        return "Task[taskID=" + taskID + ", user=" + user.username() + ", objective=" + objective + "]";
+        return "Task[taskID=" + taskID + ", user=" + user.username() + ", objective=" + objective
+                + ", weight=" + weightPercentage + "%]";
     }
 }

@@ -43,4 +43,5 @@ bin/
 .DS_Store
 ### Local database ###
 app.db
+app.db-*
 output.log
