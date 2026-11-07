@@ -23,8 +23,8 @@ public class test_gemini {
         project1.addUser(user3);
 
         Task task1 = new Task(project1, user1, "DO ANYTHING EXCEPT CURE CANCER", 50);
-        Task task2 = new Task(project1, user2, "code a medium amount", 50);
-        Task task3 = new Task(project1, user3, "code a huge amount of web", 50);
+        Task task2 = new Task(project1, user2, "Tasked to do a fair amount of low quality html, but not horrible", 50);
+        Task task3 = new Task(project1, user3, "DO ANYTHING EXCEPT CURE CANCER", 50);
 
         tasks.add(task1);
         tasks.add(task2);
