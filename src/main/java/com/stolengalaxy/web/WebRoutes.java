@@ -89,6 +89,8 @@ public final class WebRoutes {
         app.post("/tasks/weights", WebRoutes::updateWeights);
         app.post("/invites/respond", WebRoutes::respondToInvite);
         app.post("/invites/cancel", WebRoutes::cancelInvite);
+        app.post("/projects/leave", WebRoutes::leaveProject);
+        app.post("/projects/delete", WebRoutes::deleteProject);
         app.post("/contract", WebRoutes::createContract);
 
         app.get("/api/health", ctx -> ctx.json(Map.of("status", "ok")));
@@ -299,6 +301,53 @@ public final class WebRoutes {
         ctx.redirect(page + "&notice=" + URLEncoder.encode(
                 "Smart contract created. Every member's stake is now held in the pool until the deadline.",
                 StandardCharsets.UTF_8), HttpStatus.SEE_OTHER);
+    }
+
+    /**
+     * Removes the current user from a project, with their task and stake record. Only allowed before the smart
+     * contract is created: until then stakes are only recorded here, so no money has moved and nothing needs refunding.
+     * Their task's weight is freed, so the remaining members have to reassign it before the contract can be created.
+     * The creator can't leave, since only they can create the contract.
+     */
+    private static void leaveProject(Context ctx) {
+        int userId = requireUserId(ctx);
+        int projectId = intParam(ctx, "projectId", "/workspace.html");
+        String page = projectPage(projectId);
+
+        String projectName = Database.transaction(em -> {
+            Project project = unlockedProject(em, projectId, userId, page);
+            User user = em.find(User.class, userId);
+            if (project.createdBy() == user) {
+                throw new FormException(page, "You created this project, so you can't leave it. You can delete it instead.");
+            }
+            project.removeUser(user);
+            return project.name();
+        });
+        ctx.redirect("/workspace.html?notice=" + URLEncoder.encode("You left " + projectName + ".", StandardCharsets.UTF_8),
+                HttpStatus.SEE_OTHER);
+    }
+
+    /**
+     * Deletes a project with its tasks, stake records and invitations (pending ones disappear from inboxes).
+     * Only the creator can do this, and only before the smart contract is created, since after that the pool
+     * on-chain holds everyone's stakes.
+     */
+    private static void deleteProject(Context ctx) {
+        int userId = requireUserId(ctx);
+        int projectId = intParam(ctx, "projectId", "/workspace.html");
+        String page = projectPage(projectId);
+
+        String projectName = Database.transaction(em -> {
+            Project project = unlockedProject(em, projectId, userId, page);
+            if (project.createdBy() != em.find(User.class, userId)) {
+                throw new FormException(page, "Only " + project.createdBy().username() + ", who created this project, can delete it.");
+            }
+            project.prepareForDelete();
+            em.remove(project);
+            return project.name();
+        });
+        ctx.redirect("/workspace.html?notice=" + URLEncoder.encode("Deleted " + projectName + ".", StandardCharsets.UTF_8),
+                HttpStatus.SEE_OTHER);
     }
 
     /** Withdraws a pending invite. Allowed for whoever sent it and for the project's creator. */

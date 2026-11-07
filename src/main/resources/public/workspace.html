@@ -100,6 +100,8 @@
                 <div class="countdown" id="evaluation-countdown" role="timer" aria-live="off"></div>
                 <p class="muted small" id="evaluation-countdown-label"></p>
               </div>
+              <!-- Any member can request it once the deadline has passed. Not wired up yet: clicking does nothing. -->
+              <button class="btn primary wide" type="button" id="request-evaluation-button" disabled>Request evaluation</button>
               <button class="link-btn" type="button" data-open-dialog="evaluation" style="align-self: flex-start">How evaluation works ↗</button>
             </section>
 
@@ -133,6 +135,12 @@
                 <div class="divider"></div>
                 <span class="sidebar-label">Pending invitations</span>
                 <ul class="member-list" id="pending-invites"></ul>
+              </div>
+              <!-- Until the smart contract is created: members can leave, and the creator can delete the project -->
+              <div class="stack" id="leave-section" hidden>
+                <div class="divider"></div>
+                <button class="link-btn danger" type="button" data-open-dialog="leave-project" id="leave-button" style="align-self: flex-start">Leave project</button>
+                <button class="link-btn danger" type="button" data-open-dialog="delete-project" id="delete-button" style="align-self: flex-start">Delete project</button>
               </div>
             </section>
 
@@ -262,6 +270,32 @@
       <button class="btn">Close</button>
     </form>
   </div>
+</dialog>
+
+<dialog id="leave-project">
+  <form class="stack" method="post" action="/projects/leave">
+    <input type="hidden" name="projectId">
+    <h2 id="leave-title">Leave project?</h2>
+    <p class="muted">Your task and your stake are removed from the project. No money has moved yet, because stakes are only deposited when the smart contract is created.</p>
+    <p class="muted">To rejoin, you'll need a new invitation.</p>
+    <div class="dialog-actions">
+      <button class="btn" type="submit" formmethod="dialog" formnovalidate>Cancel</button>
+      <button class="btn danger" type="submit">Leave project</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="delete-project">
+  <form class="stack" method="post" action="/projects/delete">
+    <input type="hidden" name="projectId">
+    <h2 id="delete-title">Delete project?</h2>
+    <p class="muted">This removes the project for every member, along with its tasks, stakes and invitations. It can't be undone.</p>
+    <p class="muted">No money has moved yet, because stakes are only deposited when the smart contract is created.</p>
+    <div class="dialog-actions">
+      <button class="btn" type="submit" formmethod="dialog" formnovalidate>Cancel</button>
+      <button class="btn danger" type="submit">Delete project</button>
+    </div>
+  </form>
 </dialog>
 
 <dialog id="evaluation">

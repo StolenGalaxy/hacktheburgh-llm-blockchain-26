@@ -289,6 +289,8 @@ textarea { min-height: 80px; resize: vertical; }
 .pool-value { font-size: 38px; font-weight: 500; letter-spacing: -0.04em; }
 .countdown { font-size: 30px; font-weight: 500; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .countdown.done { color: var(--green); font-size: 22px; }
+/* Greyed out (rather than faded green) until the deadline */
+#request-evaluation-button:disabled { background: var(--line); border-color: var(--line); color: var(--muted); opacity: 1; cursor: not-allowed; }
 
 .progress-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .progress-bar span { display: block; height: 100%; background: var(--green); }
@@ -326,6 +328,10 @@ dialog {
 dialog::backdrop { background: #202b2580; }
 dialog h2 { font-size: 20px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* Destructive actions, e.g. leaving a project */
+.link-btn.danger { color: var(--error); }
+.btn.danger { background: var(--error); border-color: var(--error); color: #fff; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 900px) {
