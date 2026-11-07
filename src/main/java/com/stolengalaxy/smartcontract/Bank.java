@@ -64,7 +64,6 @@ public class Bank implements AutoCloseable {
 
     private final Web3j web3j;
     private final Credentials operator;
-    private final long chainId;
     private final String usdcAddress;
     private final String poolAddress;
     private final ContractGasProvider gas = new DefaultGasProvider();
@@ -72,37 +71,23 @@ public class Bank implements AutoCloseable {
     private final TransactionReceiptProcessor receipts;
     private final Map<Integer, Credentials> wallets = new ConcurrentHashMap<>();
 
-    /** Only set when this bank started its own chain; cleaned up by {@link #close()}. */
     private final Process anvil;
     private final Path buildDir;
 
-    /** Connects to contracts that are already deployed. {@code operator} must be the account that deployed them. */
-    public Bank(Web3j web3j, Credentials operator, long chainId, String usdcAddress, String poolAddress) {
-        this(web3j, operator, chainId, usdcAddress, poolAddress, null, null);
-    }
-
-    private Bank(Web3j web3j, Credentials operator, long chainId, String usdcAddress, String poolAddress,
-                 Process anvil, Path buildDir) {
-        requireValidAddress(usdcAddress, "USDC");
-        requireValidAddress(poolAddress, "pool");
+    private Bank(Web3j web3j, String usdcAddress, String poolAddress, Process anvil, Path buildDir) {
         this.web3j = web3j;
-        this.operator = operator;
-        this.chainId = chainId;
+        this.operator = Credentials.create(ANVIL_DEPLOYER_KEY);
         this.usdcAddress = usdcAddress;
         this.poolAddress = poolAddress;
-        this.operatorTx = new RawTransactionManager(web3j, operator, chainId);
+        this.operatorTx = new RawTransactionManager(web3j, operator, ANVIL_CHAIN_ID);
         this.receipts = new PollingTransactionReceiptProcessor(web3j, 200, 3_000);
         this.anvil = anvil;
         this.buildDir = buildDir;
     }
 
-    /** Starts a fresh anvil chain and deploys MockUSDC + ProjectDeposit, run from the project root. */
+    /** Starts a fresh anvil chain and deploys MockUSDC + ProjectDeposit. Run from the project root. */
     public static Bank startLocal() throws IOException {
-        return startLocal(Path.of(System.getProperty("user.dir")));
-    }
-
-    /** Starts a fresh anvil chain and deploys MockUSDC + ProjectDeposit using the .sol files under {@code projectRoot}. */
-    public static Bank startLocal(Path projectRoot) throws IOException {
+        Path projectRoot = Path.of(System.getProperty("user.dir"));
         int port;
         try (ServerSocket s = new ServerSocket(0)) {
             port = s.getLocalPort();
@@ -120,7 +105,7 @@ public class Bank implements AutoCloseable {
             String usdc = forgeCreate(projectRoot, buildDir, rpcUrl, contracts + "MockUSDC.sol:MockUSDC");
             String pool = forgeCreate(projectRoot, buildDir, rpcUrl, contracts + "projectdeposit.sol:ProjectDeposit",
                     "--constructor-args", usdc);
-            return new Bank(web3j, Credentials.create(ANVIL_DEPLOYER_KEY), ANVIL_CHAIN_ID, usdc, pool, anvil, buildDir);
+            return new Bank(web3j, usdc, pool, anvil, buildDir);
         } catch (IOException | RuntimeException e) {
             web3j.shutdown();
             anvil.destroyForcibly();
@@ -164,12 +149,12 @@ public class Bank implements AutoCloseable {
         if (!holdsKeyFor(user)) {
             throw new IllegalStateException("Bank holds no key for user " + user.userID() + "; call login first");
         }
-        return new SmartContract(web3j, wallets.get(user.userID()), chainId, gas, poolAddress, usdcAddress, poolId);
+        return new SmartContract(web3j, wallets.get(user.userID()), ANVIL_CHAIN_ID, gas, poolAddress, usdcAddress, poolId);
     }
 
     /** A pool client that signs as the contract owner, needed for payout/settle. */
     public SmartContract ownerContract(BigInteger poolId) {
-        return new SmartContract(web3j, operator, chainId, gas, poolAddress, usdcAddress, poolId);
+        return new SmartContract(web3j, operator, ANVIL_CHAIN_ID, gas, poolAddress, usdcAddress, poolId);
     }
 
     // ---------------------------------------------------------------- money
@@ -199,19 +184,11 @@ public class Bank implements AutoCloseable {
         }
     }
 
-    public String usdcAddress() {
-        return usdcAddress;
-    }
-
-    public String poolAddress() {
-        return poolAddress;
-    }
-
     @Override
     public void close() {
         web3j.shutdown();
-        if (anvil != null) anvil.destroyForcibly();
-        if (buildDir != null) deleteRecursively(buildDir);
+        anvil.destroyForcibly();
+        deleteRecursively(buildDir);
     }
 
     // ---------------------------------------------------------------- plumbing
