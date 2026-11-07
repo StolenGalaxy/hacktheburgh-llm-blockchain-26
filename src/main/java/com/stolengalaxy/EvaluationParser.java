@@ -3,8 +3,8 @@ import com.google.gson.*;
 import java.util.List;
 public record Eval(
         @serializedName("user_id") int userId,
-        List<String> evaluations
-)
+        List<String> evaluations){}
+
 public class EvaluationParser {
     Gson gson = new Gson();
 
