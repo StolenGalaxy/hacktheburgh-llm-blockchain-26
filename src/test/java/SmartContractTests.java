@@ -79,7 +79,7 @@ public class SmartContractTests {
         waitForChain();
 
         deployer = Credentials.create(DEPLOYER_KEY);
-        usdcAddress = forgeCreate("src/test/resources/MockUSDC.sol:MockUSDC");
+        usdcAddress = forgeCreate("src/main/java/com/stolengalaxy/smartcontract/MockUSDC.sol:MockUSDC");
         poolAddress = forgeCreate("src/main/java/com/stolengalaxy/smartcontract/projectdeposit.sol:ProjectDeposit",
                 "--constructor-args", usdcAddress);
     }
