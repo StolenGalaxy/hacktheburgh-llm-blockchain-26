@@ -101,7 +101,7 @@ public class SmartContractTests {
         List<SmartContract> userContracts = new ArrayList<>();
         for (int i = 0; i < USER_KEYS.length; i++) {
             Credentials creds = Credentials.create(USER_KEYS[i]);
-            User user = new User(i + 1, "user" + (i + 1), creds.getAddress());
+            User user = new User(i + 1, "user" + (i + 1), creds.getAddress(), "test");
             oracle.assignWallet(user);
             users.add(user);
             userContracts.add(contractFor(creds));
