@@ -131,7 +131,7 @@
   <form class="stack" method="post" action="/projects">
     <h2>New project</h2>
     <label class="field">Project name
-      <input name="name" maxlength="70" placeholder="What are you building?" required>
+      <input name="name" maxlength="100" placeholder="What are you building?" required>
     </label>
     <label class="field">Description
       <textarea name="description" maxlength="3000" required></textarea>
@@ -160,10 +160,10 @@
     <input type="hidden" name="projectId">
     <h2>Add task</h2>
     <label class="field">Task
-      <input name="title" maxlength="90" required>
+      <input name="title" maxlength="100" required>
     </label>
-    <label class="field">Details (optional)
-      <textarea name="description" maxlength="3000"></textarea>
+    <label class="field">Details
+      <textarea name="description" maxlength="3000" required></textarea>
     </label>
     <label class="field">Assigned to
       <select name="member" id="member-select" required></select>
