@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FairShare — Create an account</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="/js/password-toggle.js" defer></script>
+</head>
+<body>
+<main class="auth-page">
+  <section class="auth-card">
+    <a class="brand" href="/"><span class="brand-mark">✓</span>FairShare.</a>
+
+    <h1>Make room for more.</h1>
+    <p>Create your account. A fresh start is a few details away.</p>
+
+    <form class="stack" method="post" action="/signup">
+      <label class="field">
+        Full name
+        <input name="name" type="text" placeholder="Alex Morgan" autocomplete="name" required>
+      </label>
+
+      <label class="field">
+        Email address
+        <input name="email" type="email" placeholder="you@example.com" autocomplete="email" required>
+      </label>
+
+      <label class="field">
+        Password
+        <span class="password">
+          <input id="password" name="password" type="password" placeholder="Create a password"
+                 autocomplete="new-password" minlength="8" pattern=".*[0-9].*" required>
+          <button type="button" class="link-btn" data-toggle-password="password">Show</button>
+        </span>
+        <span class="hint">Use at least 8 characters, including a number.</span>
+      </label>
+
+      <label class="field">
+        GitHub email
+        <input name="github" type="email" placeholder="you@github.com" required>
+      </label>
+
+      <p class="error" role="alert"></p>
+
+      <button class="btn primary big wide" type="submit">Create account →</button>
+    </form>
+
+    <p class="switch">Already have an account? <a href="/login.html">Log in</a></p>
+  </section>
+</main>
+</body>
+</html>
