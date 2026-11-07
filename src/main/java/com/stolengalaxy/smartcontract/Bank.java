@@ -75,7 +75,7 @@ public class Bank implements AutoCloseable {
         }
     }
 
-    /** Gives a user without a wallet a new one (with ETH for gas). Store the returned User in place of the old one. */
+    /** Gives a user without a wallet a new one (with ETH for gas), setting it on the user and returning that same user. */
     public synchronized User login(User user) throws Exception {
         if (user.walletAddress() != null && !user.walletAddress().isBlank()) {
             return user;
@@ -83,7 +83,8 @@ public class Bank implements AutoCloseable {
         Credentials wallet = Credentials.create(Keys.createEcKeyPair());
         SmartContract.send(web3j, ownerTx, wallet.getAddress(), "", ETH_FOR_GAS, "fund gas");
         wallets.put(user.userID(), wallet);
-        return new User(user.userID(), user.username(), wallet.getAddress(), user.githubUsername());
+        user.setWalletAddress(wallet.getAddress());
+        return user;
     }
 
     /** Creates {@code amount} new mock USDC in the user's wallet. */

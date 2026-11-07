@@ -5,6 +5,8 @@ import io.javalin.http.staticfiles.Location;
 
 public class App {
     public static void main(String[] args) {
+
+
         int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "7070"));
 
         Javalin app = Javalin.create(config -> {
