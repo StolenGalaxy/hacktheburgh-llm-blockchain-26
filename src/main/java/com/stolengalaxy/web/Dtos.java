@@ -53,7 +53,7 @@ final class Dtos {
                       BigDecimal stakeAmount, BigDecimal poolTotal, BigDecimal poolTarget,
                       boolean youStaked, boolean youCreated, String createdBy,
                       int assignedWeight, int reservedWeight, List<String> contractBlockers,
-                      List<MemberDto> members, List<TaskDto> tasks) {
+                      List<MemberDto> members, List<TaskDto> tasks, List<PendingInviteDto> pendingInvites) {
         static ProjectDto of(Project project, User viewer) {
             BigDecimal stake = project.stakeAmount();
             return new ProjectDto(project.projectID(), project.name(), project.projectDescription(), project.repoURL(),
@@ -65,7 +65,19 @@ final class Dtos {
                     project.createdBy() == viewer, project.createdBy().username(),
                     project.assignedWeight(), project.reservedWeight(), project.contractBlockers(),
                     project.users().stream().map(user -> MemberDto.of(project, user)).toList(),
-                    project.tasks().stream().map(TaskDto::of).toList());
+                    project.tasks().stream().map(TaskDto::of).toList(),
+                    project.invites().stream()
+                            .filter(invite -> invite.status() == Invite.Status.PENDING)
+                            .map(invite -> PendingInviteDto.of(invite, viewer))
+                            .toList());
+        }
+    }
+
+    /** An invitation sent from this project that hasn't been answered yet. */
+    record PendingInviteDto(int id, String email, String task, int weightPercentage, String invitedBy, boolean canCancel) {
+        static PendingInviteDto of(Invite invite, User viewer) {
+            return new PendingInviteDto(invite.inviteID(), invite.email(), invite.objective(), invite.weightPercentage(),
+                    invite.invitedBy().username(), invite.canBeCancelledBy(viewer));
         }
     }
 

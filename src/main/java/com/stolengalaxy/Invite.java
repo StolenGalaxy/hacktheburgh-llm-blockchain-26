@@ -9,7 +9,7 @@ import jakarta.persistence.*;
 @Entity
 public class Invite {
 
-    public enum Status { PENDING, ACCEPTED, DECLINED }
+    public enum Status { PENDING, ACCEPTED, DECLINED, CANCELLED }
 
     @Id
     @GeneratedValue
@@ -60,6 +60,16 @@ public class Invite {
 
     public void decline() {
         status = Status.DECLINED;
+    }
+
+    /** Withdrawn by the project before the invitee answered; frees its reserved weight. */
+    public void cancel() {
+        status = Status.CANCELLED;
+    }
+
+    /** The person who sent the invite, or the project's creator. */
+    public boolean canBeCancelledBy(User user) {
+        return invitedBy == user || project.createdBy() == user;
     }
 
     public int inviteID() { return inviteID; }

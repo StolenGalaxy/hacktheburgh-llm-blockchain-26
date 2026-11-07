@@ -84,6 +84,7 @@ public final class WebRoutes {
         app.post("/invites", WebRoutes::invite);
         app.post("/tasks/weights", WebRoutes::updateWeights);
         app.post("/invites/respond", WebRoutes::respondToInvite);
+        app.post("/invites/cancel", WebRoutes::cancelInvite);
         app.post("/contract", WebRoutes::createContract);
 
         app.get("/api/health", ctx -> ctx.json(Map.of("status", "ok")));
@@ -297,6 +298,29 @@ public final class WebRoutes {
         ctx.redirect(page + "&notice=" + URLEncoder.encode(
                 "Everything's ready. Creating the smart contract isn't wired up yet.", StandardCharsets.UTF_8),
                 HttpStatus.SEE_OTHER);
+    }
+
+    /** Withdraws a pending invite. Allowed for whoever sent it and for the project's creator. */
+    private static void cancelInvite(Context ctx) {
+        int userId = requireUserId(ctx);
+        int projectId = intParam(ctx, "projectId", "/workspace.html");
+        String page = projectPage(projectId);
+        int inviteId = intParam(ctx, "inviteId", page);
+
+        Database.transaction(em -> {
+            Project project = memberProject(em, projectId, userId);
+            User user = em.find(User.class, userId);
+            Invite invite = em.find(Invite.class, inviteId);
+            if (invite == null || invite.project() != project || invite.status() != Invite.Status.PENDING) {
+                throw new FormException(page, "That invitation has already been answered or cancelled.");
+            }
+            if (!invite.canBeCancelledBy(user)) {
+                throw new FormException(page, "Only the person who sent an invitation, or the project's creator, can cancel it.");
+            }
+            invite.cancel();
+            return null;
+        });
+        ctx.redirect(page, HttpStatus.SEE_OTHER);
     }
 
     private static void respondToInvite(Context ctx) {

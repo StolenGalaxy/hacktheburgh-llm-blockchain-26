@@ -138,6 +138,20 @@ function renderProject(project, me) {
         ? el("span", { class: "badge green push", text: `✓ ${shortAmount(project.stakeAmount)}` })
         : el("span", { class: "badge amber push", text: "Pending" }))));
 
+  // Pending invitations, cancellable by whoever sent them or the creator
+  $("#pending-invites-section").hidden = project.pendingInvites.length === 0;
+  $("#pending-invites").replaceChildren(...project.pendingInvites.map((invite) =>
+    el("li", { class: "stack", style: "gap: 4px" },
+      el("div", { class: "row" },
+        el("span", { style: "overflow-wrap: anywhere", text: invite.email }),
+        invite.canCancel
+          ? el("form", { class: "push", method: "post", action: "/invites/cancel" },
+              el("input", { type: "hidden", name: "projectId", value: project.id }),
+              el("input", { type: "hidden", name: "inviteId", value: invite.id }),
+              el("button", { class: "link-btn", type: "submit", text: "Cancel" }))
+          : el("span", { class: "badge amber push", text: "Pending" })),
+      el("span", { class: "muted small", text: `${invite.task} · ${invite.weightPercentage}% · sent by ${invite.invitedBy}` }))));
+
   // Add-task dialog: only members without a task can be picked
   $("#member-select").replaceChildren(...project.members.map((member) => {
     const option = el("option", { value: member.userId, text: member.hasTask ? `${member.name} (has a task)` : member.name });

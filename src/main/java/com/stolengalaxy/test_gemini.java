@@ -15,7 +15,7 @@ public class test_gemini {
         List<Task> tasks = new ArrayList<>();
         Project project1 = new Project("COMMITD", "a +pp thing", "https://github.com/StolenGalaxy/hacktheburgh-llm-blockchain-26", null, null, user1);
 
-        Task task1 = new Task(project1, user1, "DO ANYTHING EXCEPT CURE CANCER", null);
+        Task task1 = new Task(project1, user1, "DO ANYTHING EXCEPT CURE CANCER", 100);
         tasks.add(task1);
 
         JsonObject response = Gemini.query("Testing", tasks, project1.repoURL());
