@@ -47,7 +47,7 @@ public class Gemini {
                 + "\n\nUSERS:\n" + usersJson
                 + "\n\nCOMMITS:\n" + commitsText;
 
-        String jsonFormat = Files.readString(Path.of("src/main/resources/prompts/evaluator-out"));
+        String jsonFormat = Files.readString(Path.of("src/main/resources/prompts/evaluator-output-format.json"));
 
         GenerateContentConfig config = GenerateContentConfig.builder()
                 .systemInstruction(Content.fromParts(Part.fromText(systemPrompt)))
