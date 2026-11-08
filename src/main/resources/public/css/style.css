@@ -124,6 +124,14 @@ textarea { min-height: 80px; resize: vertical; }
   color: var(--ink);
   text-decoration: none;
 }
+.brand-logo {
+  display: block;
+  width:36px;
+  height:36px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .brand-mark {
   display: grid;
   place-items: center;
