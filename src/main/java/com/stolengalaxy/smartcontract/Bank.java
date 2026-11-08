@@ -31,12 +31,16 @@ import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -61,11 +65,15 @@ public class Bank implements AutoCloseable {
     /** Top a wallet up with {@link #ETH_FOR_GAS} when it drops below this. */
     private static final BigInteger MIN_GAS_BALANCE = Convert.toWei("1", Convert.Unit.ETHER).toBigInteger();
     private static final String CONTRACTS = "src/main/java/com/stolengalaxy/smartcontract/";
+    /** Mock USDC every new wallet starts with (see {@link #openWallet}). */
+    public static final BigDecimal STARTING_FUNDS = new BigDecimal("100");
 
     private static final String STATE_FILE = "anvil-state.json";
     private static final String CONTRACTS_FILE = "contracts.properties";
     private static final String SEED_FILE = "wallet-seed";
     private static final String PID_FILE = "anvil.pid";
+    /** Addresses that have been given {@link #STARTING_FUNDS}, one per line. */
+    private static final String FUNDED_FILE = "funded-wallets.txt";
 
     private final Path stateDir; // null for a throwaway chain
     private final Process anvil;
@@ -77,6 +85,8 @@ public class Bank implements AutoCloseable {
     private final String usdcContract;
     private final String poolContract;
     private final Map<Integer, Credentials> wallets = new ConcurrentHashMap<>();
+    /** Lower-case addresses that have had their {@link #STARTING_FUNDS}. */
+    private final Set<String> fundedWallets = new HashSet<>();
 
     /** Starts a throwaway anvil chain and deploys MockUSDC + ProjectDeposit. Needs Foundry installed; run from the project root. */
     public Bank() throws Exception {
@@ -121,11 +131,13 @@ public class Bank implements AutoCloseable {
             if (saved != null && hasCode(saved.getProperty("usdc")) && hasCode(saved.getProperty("pool"))) {
                 usdcContract = saved.getProperty("usdc");
                 poolContract = saved.getProperty("pool");
+                fundedWallets.addAll(loadFundedWallets(stateDir.resolve(FUNDED_FILE)));
             } else {
                 usdcContract = deploy(rpcUrl, "MockUSDC.sol:MockUSDC");
                 poolContract = deploy(rpcUrl, "projectdeposit.sol:ProjectDeposit", "--constructor-args", usdcContract);
                 if (stateDir != null) {
                     saveContracts(stateDir.resolve(CONTRACTS_FILE));
+                    Files.deleteIfExists(stateDir.resolve(FUNDED_FILE)); // a fresh token: nobody has been funded on it yet
                 }
             }
         } catch (Exception e) {
@@ -151,6 +163,25 @@ public class Bank implements AutoCloseable {
         return user;
     }
 
+    /**
+     * Makes sure the user's wallet exists and has gas, and gives it {@link #STARTING_FUNDS} the first time.
+     * Safe to call on every request. Returns the wallet's address.
+     */
+    public synchronized String openWallet(int userID) throws Exception {
+        // A detached copy with no address, so login always (re)derives the wallet and checks its gas
+        User wallet = login(new User(userID, "user " + userID, null, null));
+        String key = wallet.walletAddress().toLowerCase(Locale.ROOT);
+        if (!fundedWallets.contains(key)) {
+            mintUSDC(wallet, STARTING_FUNDS);
+            fundedWallets.add(key);
+            if (stateDir != null) {
+                Files.writeString(stateDir.resolve(FUNDED_FILE), key + System.lineSeparator(),
+                        StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            }
+        }
+        return wallet.walletAddress();
+    }
+
     /** Creates {@code amount} new mock USDC in the user's wallet. */
     public void mintUSDC(User user, float amount) {
         mintUSDC(user, new BigDecimal(Float.toString(amount)).setScale(6, RoundingMode.DOWN));
@@ -165,7 +196,12 @@ public class Bank implements AutoCloseable {
 
     /** The user's USDC balance. */
     public BigDecimal balanceOf(User user) throws IOException {
-        return new BigDecimal(view(usdcContract, "balanceOf", new Address(user.walletAddress())), 6);
+        return balanceOf(user.walletAddress());
+    }
+
+    /** A wallet's USDC balance. */
+    public BigDecimal balanceOf(String walletAddress) throws IOException {
+        return new BigDecimal(view(usdcContract, "balanceOf", new Address(walletAddress)), 6);
     }
 
     /** The project's pool, used as this user (deposit, withdraw). */
@@ -333,6 +369,13 @@ public class Bank implements AutoCloseable {
             // corrupt pid file: nothing to stop
         }
         Files.deleteIfExists(pidFile);
+    }
+
+    private static List<String> loadFundedWallets(Path file) throws IOException {
+        if (!Files.exists(file)) {
+            return List.of();
+        }
+        return Files.readAllLines(file).stream().map(String::trim).filter(line -> !line.isEmpty()).toList();
     }
 
     private static Properties loadContracts(Path file) throws IOException {

@@ -5,6 +5,7 @@ import com.stolengalaxy.Project;
 import com.stolengalaxy.Task;
 import com.stolengalaxy.User;
 import com.stolengalaxy.smartcontract.ProjectContracts;
+import com.stolengalaxy.smartcontract.Wallets;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -25,12 +26,28 @@ final class Dtos {
     private Dtos() {
     }
 
-    record MeDto(int userId, String name, String initials, String email,
+    record MeDto(int userId, String name, String initials, String email, WalletDto wallet,
                  List<ProjectSummaryDto> projects, List<InviteDto> invites) {
-        static MeDto of(User user, List<Invite> pendingInvites) {
-            return new MeDto(user.userID(), user.username(), Dtos.initials(user.username()), user.email(),
+        static MeDto of(User user, List<Invite> pendingInvites, WalletDto wallet) {
+            return new MeDto(user.userID(), user.username(), Dtos.initials(user.username()), user.email(), wallet,
                     user.projects().stream().map(ProjectSummaryDto::of).toList(),
                     pendingInvites.stream().map(InviteDto::of).toList());
+        }
+    }
+
+    /**
+     * The user's own wallet.
+     *
+     * @param available false if it couldn't be read; {@code error} says why, and address/balance are null
+     * @param committed stakes recorded in projects whose contracts haven't been created yet (still in the wallet)
+     * @param maxTopUp  most that can be added at once with the temporary "Add funds" button
+     */
+    record WalletDto(boolean available, String error, String address, BigDecimal balance, BigDecimal committed,
+                     BigDecimal maxTopUp) {
+        static WalletDto of(Wallets.Wallet wallet, String error, BigDecimal committed) {
+            return wallet == null
+                    ? new WalletDto(false, error, null, null, committed, Wallets.MAX_TOP_UP)
+                    : new WalletDto(true, null, wallet.address(), wallet.balance(), committed, Wallets.MAX_TOP_UP);
         }
     }
 

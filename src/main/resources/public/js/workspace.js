@@ -41,7 +41,47 @@ function renderAccount(me) {
   $("#account-name").textContent = me.name;
   $("#account-avatar").textContent = me.initials;
   $("#topbar-avatar").textContent = me.initials;
+  renderWallet(me.wallet);
 }
+
+// Money that isn't committed to a stake yet (stakes stay in the wallet until their contract is created)
+const freeFunds = (wallet) => Math.max(0, Number(wallet.balance) - Number(wallet.committed));
+
+function renderWallet(wallet) {
+  const chip = $("#wallet-chip-balance");
+  const error = $("#wallet-error");
+  const addButton = $("#add-funds-button");
+  const maxTopUp = Number(wallet.maxTopUp);
+  $("#add-funds-amount").max = maxTopUp;
+  $("#add-funds-hint").textContent = `Temporary, until real payments are set up: this adds test USDC to your wallet. Up to ${money(maxTopUp)} at a time.`;
+
+  if (!wallet.available) {
+    chip.textContent = "Unavailable";
+    $("#wallet-balance").textContent = "—";
+    $("#wallet-free").textContent = "";
+    error.hidden = false;
+    error.textContent = wallet.error;
+    $("#wallet-details").replaceChildren();
+    addButton.disabled = true;
+    return;
+  }
+  error.hidden = true;
+  addButton.disabled = false;
+  chip.textContent = money(wallet.balance);
+  $("#wallet-balance").textContent = usdc(wallet.balance);
+  const committed = Number(wallet.committed);
+  $("#wallet-free").textContent = committed > 0
+    ? `${usdc(freeFunds(wallet))} free · ${usdc(committed)} committed to stakes in projects without a contract yet`
+    : "USDC, all free to stake";
+  const row = (label, value, props = {}) => [el("dt", { text: label }), el("dd", { ...props, text: value })];
+  $("#wallet-details").replaceChildren(...row("Address", wallet.address, { class: "mono" }));
+}
+
+// From the stake dialog, when there isn't enough in the wallet
+$("#stake-add-funds").addEventListener("click", () => {
+  $("#stake").close();
+  $("#wallet").showModal();
+});
 
 function renderProjectList(projects, activeId) {
   $("#project-list").replaceChildren(...projects.map((project) =>
@@ -134,6 +174,7 @@ function renderProject(project, me) {
   stakeButton.textContent = `Stake ${shortAmount(project.stakeAmount)}`;
   stakeButton.hidden = project.youStaked || project.deadlinePassed || project.locked;
   $("#stake-title").textContent = `Stake ${shortAmount(project.stakeAmount)}?`;
+  renderStakeWallet(project, me.wallet);
 
   // Team
   $("#member-list").replaceChildren(...project.members.map((member) =>
@@ -185,6 +226,24 @@ function renderProject(project, me) {
 
   document.querySelectorAll('input[name="projectId"]').forEach((input) => { input.value = project.id; });
   $("#project-view").hidden = false;
+}
+
+// The stake dialog says what's in the wallet, and blocks staking more than is free (the server checks this too)
+function renderStakeWallet(project, wallet) {
+  const line = $("#stake-wallet");
+  const short = wallet.available && freeFunds(wallet) < Number(project.stakeAmount);
+  $("#stake-confirm").disabled = short;
+  $("#stake-add-funds").hidden = !short;
+  if (!wallet.available) {
+    line.className = "small warning";
+    line.textContent = `Your wallet can't be checked right now: ${wallet.error}`;
+  } else if (short) {
+    line.className = "small warning";
+    line.textContent = `You have ${usdc(freeFunds(wallet))} free in your wallet, which isn't enough. Add funds first.`;
+  } else {
+    line.className = "small muted";
+    line.textContent = `You have ${usdc(freeFunds(wallet))} free in your wallet.`;
+  }
 }
 
 // Counts down to the deadline, after which evaluation can be requested. Ticks every second.

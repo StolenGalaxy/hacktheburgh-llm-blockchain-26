@@ -6,6 +6,7 @@ import com.stolengalaxy.Task;
 import com.stolengalaxy.User;
 import com.stolengalaxy.db.Database;
 import com.stolengalaxy.smartcontract.ProjectContracts;
+import com.stolengalaxy.smartcontract.Wallets;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.http.ForbiddenResponse;
@@ -92,6 +93,7 @@ public final class WebRoutes {
         app.post("/projects/leave", WebRoutes::leaveProject);
         app.post("/projects/delete", WebRoutes::deleteProject);
         app.post("/contract", WebRoutes::createContract);
+        app.post("/wallet/add", WebRoutes::addFunds);
 
         app.get("/api/health", ctx -> ctx.json(Map.of("status", "ok")));
         app.get("/api/me", WebRoutes::me);
@@ -209,13 +211,26 @@ public final class WebRoutes {
     }
 
     /**
-     * Records that the member commits their stake. The money moves on-chain when the creator creates the
-     * smart contract (see {@link ProjectContracts#create}).
+     * Records that the member commits their stake. The money moves on-chain, out of their wallet, when the creator
+     * creates the smart contract (see {@link ProjectContracts#create}). Their wallet must hold enough to cover it on
+     * top of what they've staked in other projects whose contracts haven't been created yet.
      */
     private static void stake(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
         String page = projectPage(projectId);
+
+        // Read the wallet before the transaction, so the database isn't held while the chain is called.
+        // If the chain is down, the stake is still recorded; contract creation checks every wallet again anyway.
+        Wallets.Wallet wallet = null;
+        if (contracts.wallets().available()) {
+            try {
+                wallet = contracts.wallets().open(userId);
+            } catch (Wallets.WalletException e) {
+                throw new FormException(page, e.getMessage());
+            }
+        }
+        BigDecimal balance = wallet == null ? null : wallet.balance();
 
         Database.transaction(em -> {
             Project project = unlockedProject(em, projectId, userId, page);
@@ -225,6 +240,16 @@ public final class WebRoutes {
             }
             if (project.deadline().isBefore(LocalDateTime.now())) {
                 throw new FormException(page, "The deadline has passed, so stakes are closed.");
+            }
+            if (balance != null) {
+                BigDecimal committed = committedStakes(user);
+                BigDecimal free = balance.subtract(committed);
+                if (free.compareTo(project.stakeAmount()) < 0) {
+                    throw new FormException(page, "You need " + Wallets.dollars(project.stakeAmount()) + " to stake, but only "
+                            + Wallets.dollars(free.max(BigDecimal.ZERO)) + " of your wallet is free"
+                            + (committed.signum() > 0 ? " (" + Wallets.dollars(committed) + " is committed to other projects)" : "")
+                            + ". Add funds from your wallet first.");
+                }
             }
             project.recordStake(user);
             return null;
@@ -350,6 +375,28 @@ public final class WebRoutes {
                 HttpStatus.SEE_OTHER);
     }
 
+    /** Temporary stand-in for a payment terminal: adds test USDC to the user's wallet. */
+    private static void addFunds(Context ctx) {
+        int userId = requireUserId(ctx);
+        String projectParam = ctx.formParam("projectId");
+        String page = projectParam == null || projectParam.isBlank() ? "/workspace.html" : projectPage(intParam(ctx, "projectId", "/workspace.html"));
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(required(ctx, "amount", 30, page, "Amount"));
+        } catch (NumberFormatException e) {
+            throw new FormException(page, "The amount must be a number.");
+        }
+        Wallets.Wallet wallet;
+        try {
+            wallet = contracts.wallets().addFunds(userId, amount);
+        } catch (Wallets.WalletException e) {
+            throw new FormException(page, e.getMessage());
+        }
+        String separator = page.contains("?") ? "&" : "?";
+        ctx.redirect(page + separator + "notice=" + URLEncoder.encode("Added " + Wallets.dollars(amount)
+                + " to your wallet. Your balance is " + Wallets.dollars(wallet.balance()) + ".", StandardCharsets.UTF_8), HttpStatus.SEE_OTHER);
+    }
+
     /** Withdraws a pending invite. Allowed for whoever sent it and for the project's creator. */
     private static void cancelInvite(Context ctx) {
         int userId = requireUserId(ctx);
@@ -408,6 +455,26 @@ public final class WebRoutes {
 
     private static void me(Context ctx) {
         int userId = requireUserId(ctx);
+        // Opens the wallet on first use (with its starting funds), so every user has one before they need it
+        Wallets.Wallet wallet = null;
+        String walletError = null;
+        try {
+            wallet = contracts.wallets().open(userId);
+        } catch (Wallets.WalletException e) {
+            walletError = e.getMessage();
+        }
+        if (wallet != null) {
+            String address = wallet.address();
+            Database.transaction(em -> {
+                User user = em.find(User.class, userId);
+                if (user != null && !address.equals(user.walletAddress())) {
+                    user.setWalletAddress(address);
+                }
+                return null;
+            });
+        }
+        Wallets.Wallet finalWallet = wallet;
+        String finalWalletError = walletError;
         ctx.json(Database.read(em -> {
             User user = em.find(User.class, userId);
             if (user == null) {
@@ -419,7 +486,7 @@ public final class WebRoutes {
                     .setParameter("email", user.email())
                     .setParameter("status", Invite.Status.PENDING)
                     .getResultList();
-            return Dtos.MeDto.of(user, invites);
+            return Dtos.MeDto.of(user, invites, Dtos.WalletDto.of(finalWallet, finalWalletError, committedStakes(user)));
         }));
     }
 
@@ -476,6 +543,14 @@ public final class WebRoutes {
                     + ", so tasks, weights, members and stakes can't change any more.");
         }
         return project;
+    }
+
+    /** Stakes the user has committed in projects whose contracts haven't been created, so are still in their wallet. */
+    private static BigDecimal committedStakes(User user) {
+        return user.projects().stream()
+                .filter(project -> project.hasStaked(user) && project.contractStatus() != Project.ContractStatus.CREATED)
+                .map(Project::stakeAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private static User findUserByEmail(EntityManager em, String email) {
