@@ -35,7 +35,8 @@
     <header class="topbar">
       <span class="muted small">Projects /</span>
       <span class="small" id="crumb-project"></span>
-      <button class="btn push" type="button" data-open-dialog="inbox">Inbox <span class="count" id="inbox-count" hidden></span></button>
+      <button class="btn push wallet-chip" type="button" data-open-dialog="wallet" title="Your wallet"><span class="wallet-label">Wallet</span> <span id="wallet-chip-balance">…</span></button>
+      <button class="btn" type="button" data-open-dialog="inbox">Inbox <span class="count" id="inbox-count" hidden></span></button>
       <span class="avatar" id="topbar-avatar"></span>
     </header>
 
@@ -218,10 +219,12 @@
   <form class="stack" method="post" action="/stake">
     <input type="hidden" name="projectId">
     <h2 id="stake-title">Stake?</h2>
-    <p class="muted">Your stake goes into the shared pool and is settled at the deadline.</p>
+    <p class="muted">Your stake stays in your wallet until the smart contract is created. Then it moves into the shared pool and is settled at the deadline.</p>
+    <p class="small" id="stake-wallet"></p>
     <div class="dialog-actions">
       <button class="btn" type="submit" formmethod="dialog">Cancel</button>
-      <button class="btn primary" type="submit">Confirm stake</button>
+      <button class="btn" type="button" id="stake-add-funds" hidden>Add funds</button>
+      <button class="btn primary" type="submit" id="stake-confirm">Confirm stake</button>
     </div>
   </form>
 </dialog>
@@ -260,6 +263,31 @@
       <button class="btn primary" type="submit">Save weights</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="wallet">
+  <div class="stack">
+    <h2>Your wallet</h2>
+    <div>
+      <div class="pool-value" id="wallet-balance"></div>
+      <p class="muted small" id="wallet-free"></p>
+    </div>
+    <p class="small warning" id="wallet-error" hidden></p>
+    <dl class="details small" id="wallet-details"></dl>
+    <div class="divider"></div>
+    <!-- Temporary: mints mock USDC until real payments (a payment terminal) are hooked up -->
+    <form class="stack" method="post" action="/wallet/add" id="add-funds-form">
+      <input type="hidden" name="projectId">
+      <label class="field">Add test funds
+        <span class="money-input"><input name="amount" id="add-funds-amount" type="number" min="0.01" step="0.01" value="100" required></span>
+        <span class="hint" id="add-funds-hint"></span>
+      </label>
+      <div class="dialog-actions">
+        <button class="btn" type="submit" formmethod="dialog" formnovalidate>Close</button>
+        <button class="btn primary" type="submit" id="add-funds-button">Add funds</button>
+      </div>
+    </form>
+  </div>
 </dialog>
 
 <dialog id="inbox">
@@ -301,9 +329,9 @@
 <dialog id="evaluation">
   <div class="stack">
     <h2>How evaluation works</h2>
-    <p class="muted">At the deadline, Gemini scores each member's code contribution from 0–10, with feedback and commit evidence.</p>
+    <p class="muted">At the deadline, an LLM scores each member's code contribution from 0–10, with feedback and commit evidence.</p>
     <p class="muted">The backend settles the pool and members withdraw their allocation.</p>
-    <p class="muted">AI can be wrong. Non-code work is not measured.</p>
+    <p class="muted">Non-code work is not measured.</p>
     <form class="dialog-actions" method="dialog">
       <button class="btn">Close</button>
     </form>

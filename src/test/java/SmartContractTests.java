@@ -4,9 +4,11 @@ import com.stolengalaxy.smartcontract.ISmartContract;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.file.Path;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -71,6 +73,27 @@ public class SmartContractTests {
         assertBalance("110", alice);
         assertBalance("110", bob);
         assertBalance("80", carol);
+    }
+
+    @Test
+    public void testStartingFundsAreGivenOnce() throws Exception {
+        String address = bank.openWallet(21);
+        assertEquals(0, Bank.STARTING_FUNDS.compareTo(bank.balanceOf(address)), "a new wallet starts with 100 USDC");
+        assertEquals(address, bank.openWallet(21), "the same user always gets the same wallet");
+        assertEquals(0, Bank.STARTING_FUNDS.compareTo(bank.balanceOf(address)), "opening it again doesn't add more");
+    }
+
+    @Test
+    public void testStartingFundsSurviveRestart(@TempDir Path stateDir) throws Exception {
+        String address;
+        try (Bank first = Bank.persistent(stateDir)) {
+            address = first.openWallet(1);
+        }
+        try (Bank second = Bank.persistent(stateDir)) {
+            assertEquals(address, second.openWallet(1));
+            assertEquals(0, Bank.STARTING_FUNDS.compareTo(second.balanceOf(address)),
+                    "after a restart the wallet keeps its funds and isn't funded twice");
+        }
     }
 
     /** Logs a new user in (creating their wallet), mints them 100 USDC and stakes {@code stake} into the pool. */

@@ -3,6 +3,7 @@ package com.stolengalaxy.smartcontract;
 import com.stolengalaxy.Project;
 import com.stolengalaxy.User;
 import com.stolengalaxy.db.Database;
+import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +14,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,8 +23,8 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Creates each project's pool in the ProjectDeposit contract and deposits every member's stake into it.
  *
- * <p>Members don't have wallets of their own yet: the {@link Bank} holds a wallet per user, and because the chain is
- * a local demo one, it mints each member's stake in mock USDC right before depositing it ("No real funds").</p>
+ * <p>Each member's stake is deposited from their own wallet (see {@link Wallets}), so every member needs at least
+ * the stake in their wallet. That's checked for everyone before anything happens on-chain.</p>
  *
  * <p>Creation is safe to retry. The pool ID is saved before anything happens on-chain, and each step checks the
  * chain first (does the pool exist? how much has this wallet deposited?), so running it again only does what's missing.</p>
@@ -34,12 +36,19 @@ public final class ProjectContracts implements AutoCloseable {
 
     private final Bank bank; // null when the chain couldn't start
     private final String unavailableReason;
+    private final Wallets wallets;
     /** One creation at a time, so two clicks can't both deposit. Creating a contract is rare, so one lock is enough. */
     private final ReentrantLock creationLock = new ReentrantLock();
 
     private ProjectContracts(Bank bank, String unavailableReason) {
         this.bank = bank;
         this.unavailableReason = unavailableReason;
+        this.wallets = new Wallets(bank);
+    }
+
+    /** The users' own wallets, on the same chain. */
+    public Wallets wallets() {
+        return wallets;
     }
 
     /** Starts the persistent local chain in {@code stateDir}. If it can't start, the site still runs without contracts. */
@@ -110,6 +119,9 @@ public final class ProjectContracts implements AutoCloseable {
         }
         creationLock.lock();
         try {
+            // Before anything is saved or sent: can every member cover their stake? (Under the lock, since only
+            // contract creation takes money out of wallets.)
+            checkFunds(Database.read(em -> plan(validated(em, projectId, requestingUserId))));
             Plan plan = reserve(projectId, requestingUserId);
             Map<Integer, String> wallets = createOnChain(plan);
             record(projectId, wallets);
@@ -118,33 +130,67 @@ public final class ProjectContracts implements AutoCloseable {
         }
     }
 
-    /** A detached snapshot of what has to happen on-chain. */
+    /** A detached snapshot of what has to happen on-chain. {@code poolId} is null until creation has started. */
     private record Plan(BigInteger poolId, BigDecimal stake, LocalDateTime deadline, List<Member> members) {
     }
 
     private record Member(int userId, String name) {
     }
 
+    /** The project, if {@code requestingUserId} may create its contract now. */
+    private static Project validated(EntityManager em, int projectId, int requestingUserId) {
+        Project project = em.find(Project.class, projectId);
+        if (project == null) {
+            throw new CreationException("Project not found.");
+        }
+        if (project.createdBy().userID() != requestingUserId) {
+            throw new CreationException("Only the project's creator can create the smart contract.");
+        }
+        if (project.contractStatus() == Project.ContractStatus.CREATED) {
+            throw new CreationException("The smart contract has already been created.");
+        }
+        List<String> blockers = project.contractBlockers();
+        if (!blockers.isEmpty()) {
+            throw new CreationException("Not ready yet: " + String.join("; ", blockers) + ".");
+        }
+        return project;
+    }
+
+    private static Plan plan(Project project) {
+        List<Member> members = project.users().stream().map(u -> new Member(u.userID(), u.username())).toList();
+        BigInteger poolId = project.poolId() == null ? null : BigInteger.valueOf(project.poolId());
+        return new Plan(poolId, project.stakeAmount(), project.deadline(), members);
+    }
+
+    /** Step 0 (chain, read-only): every member must have what they still owe in their wallet. */
+    private void checkFunds(Plan plan) {
+        List<String> shortfalls = new ArrayList<>();
+        try {
+            for (Member member : plan.members()) {
+                String address = bank.openWallet(member.userId());
+                BigDecimal deposited = plan.poolId() == null ? BigDecimal.ZERO : bank.depositOf(plan.poolId(), address);
+                BigDecimal owed = plan.stake().subtract(deposited);
+                BigDecimal balance = bank.balanceOf(address);
+                if (owed.signum() > 0 && balance.compareTo(owed) < 0) {
+                    shortfalls.add(member.name() + " has " + Wallets.dollars(balance) + " but needs " + Wallets.dollars(owed));
+                }
+            }
+        } catch (Exception e) {
+            LOG.error("Couldn't check members' wallets (pool {})", plan.poolId(), e);
+            throw new CreationException("Couldn't check members' wallets on the blockchain. Nothing has changed. Try again.");
+        }
+        if (!shortfalls.isEmpty()) {
+            throw new CreationException("Not every member has enough USDC for their stake: " + String.join("; ", shortfalls)
+                    + ". They can add funds from their wallet, then press the button again.");
+        }
+    }
+
     /** Step 1 (database): check the project can have a contract, and save its pool ID before touching the chain. */
     private Plan reserve(int projectId, int requestingUserId) {
         return Database.transaction(em -> {
-            Project project = em.find(Project.class, projectId);
-            if (project == null) {
-                throw new CreationException("Project not found.");
-            }
-            if (project.createdBy().userID() != requestingUserId) {
-                throw new CreationException("Only the project's creator can create the smart contract.");
-            }
-            if (project.contractStatus() == Project.ContractStatus.CREATED) {
-                throw new CreationException("The smart contract has already been created.");
-            }
-            List<String> blockers = project.contractBlockers();
-            if (!blockers.isEmpty()) {
-                throw new CreationException("Not ready yet: " + String.join("; ", blockers) + ".");
-            }
+            Project project = validated(em, projectId, requestingUserId);
             project.beginContract(RANDOM.nextLong() & Long.MAX_VALUE);
-            List<Member> members = project.users().stream().map(u -> new Member(u.userID(), u.username())).toList();
-            return new Plan(BigInteger.valueOf(project.poolId()), project.stakeAmount(), project.deadline(), members);
+            return plan(project);
         });
     }
 
@@ -158,13 +204,12 @@ public final class ProjectContracts implements AutoCloseable {
             Map<Integer, String> wallets = new LinkedHashMap<>();
             for (Member member : plan.members()) {
                 step = "depositing " + member.name() + "'s stake";
-                // A detached copy with no address, so the bank always (re)derives the wallet and makes sure it has gas.
-                User wallet = bank.login(new User(member.userId(), member.name(), null, null));
-                wallets.put(member.userId(), wallet.walletAddress());
-                BigDecimal owed = plan.stake().subtract(bank.depositOf(plan.poolId(), wallet.walletAddress()));
+                String address = bank.openWallet(member.userId()); // makes sure it has gas
+                wallets.put(member.userId(), address);
+                BigDecimal owed = plan.stake().subtract(bank.depositOf(plan.poolId(), address));
                 if (owed.signum() > 0) {
-                    bank.mintUSDC(wallet, owed); // demo chain: mint the stake as mock USDC, then deposit it
-                    bank.contractFor(wallet, plan.poolId()).deposit(owed);
+                    // From the member's own wallet; checkFunds made sure it holds enough
+                    bank.contractFor(new User(member.userId(), member.name(), address, null), plan.poolId()).deposit(owed);
                 }
             }
             step = "checking the pool";
