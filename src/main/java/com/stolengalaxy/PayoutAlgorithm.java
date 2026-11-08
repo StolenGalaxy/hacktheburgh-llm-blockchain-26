@@ -59,20 +59,18 @@ public class PayoutAlgorithm {
             // Money at risk is the user's weight share of the pool: 80% weight risks 4x what 20% does
             double deposit = totalStake * weights.get(userId) / 100.0;
 
-            if (userScore <= 6 && userScore < averageScore){
+            if (userScore <= 6){
                 System.out.println("score too low");
                 double lossFraction = (averageScore - userScore) / averageScore;   // score 2, avg 5.33 → 0.625 (lose 62.5%)
                 double loss = deposit * lossFraction;
 
                 payouts.put(userId, deposit - loss);
                 payoutTotal += loss;
-            } else if (userScore >=7) {
+            } else {
                 System.out.println("score is good, paying out");
                 successfulUsers.add(userId);
             }
-            else{
-                successfulUsers.add(userId);
-            }
+
         }
 
         // Winners share the pot by weight, out of the WINNERS' total weight (not 100), so the whole pot is paid out
