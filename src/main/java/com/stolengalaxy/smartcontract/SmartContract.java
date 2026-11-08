@@ -26,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** Talks to one pool of the ProjectDeposit contract (projectdeposit.sol), signing every transaction as one wallet. */
 public class SmartContract implements ISmartContract {
 
     private static final DefaultGasProvider GAS = new DefaultGasProvider();
@@ -98,7 +97,6 @@ public class SmartContract implements ISmartContract {
                 BigInteger.ZERO, function);
     }
 
-    /** Sends a transaction and waits for it to be mined. Throws with the contract's error message if it fails. */
     static void send(Web3j web3j, TransactionManager tx, String to, String data, BigInteger value, String what) {
         try {
             EthSendTransaction sent = tx.sendTransaction(GAS.getGasPrice(), GAS.getGasLimit(), to, data, value);
@@ -121,12 +119,10 @@ public class SmartContract implements ISmartContract {
         }
     }
 
-    /** USDC has 6 decimals, so 12.5 USDC is 12,500,000 units. Goes via the decimal string so 0.1f is exactly 100,000. */
     static BigInteger toUnits(float usdc) {
         return new BigDecimal(Float.toString(usdc)).movePointRight(6).toBigInteger();
     }
 
-    /** Exact conversion; throws if {@code usdc} has more than 6 decimal places. */
     static BigInteger toUnits(BigDecimal usdc) {
         return usdc.movePointRight(6).toBigIntegerExact();
     }

@@ -17,11 +17,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * JSON shapes sent to the frontend. Entities are never serialised directly: their relationships point at
- * each other (Gson would recurse forever) and they hold fields like password hashes that must stay private.
- * Build these inside {@link com.stolengalaxy.db.Database#read} so lazy relationships can load.
- */
 final class Dtos {
 
     private static final DateTimeFormatter DEADLINE_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm", Locale.UK);
@@ -38,13 +33,6 @@ final class Dtos {
         }
     }
 
-    /**
-     * The user's own wallet.
-     *
-     * @param available false if it couldn't be read; {@code error} says why, and address/balance are null
-     * @param committed stakes recorded in projects whose contracts haven't been created yet (still in the wallet)
-     * @param maxTopUp  most that can be added at once with the temporary "Add funds" button
-     */
     record WalletDto(boolean available, String error, String address, BigDecimal balance, BigDecimal committed,
                      BigDecimal maxTopUp) {
         static WalletDto of(Wallets.Wallet wallet, String error, BigDecimal committed) {
@@ -99,13 +87,6 @@ final class Dtos {
         }
     }
 
-    /**
-     * The project's smart contract.
-     *
-     * @param status         NONE, CREATING (started but unfinished; retrying finishes it) or CREATED
-     * @param chainAvailable whether the local blockchain is running; {@code chainError} says why not
-     * @param onChain        what the chain says about the pool right now, or null if it couldn't be read / doesn't apply
-     */
     record ContractDto(String status, String poolId, String contractAddress, String createdAt,
                        boolean chainAvailable, String chainError, OnChainDto onChain) {
         static ContractDto of(Project project, ProjectContracts contracts) {
@@ -125,14 +106,6 @@ final class Dtos {
         }
     }
 
-    /**
-     * The project's AI evaluation and payout.
-     *
-     * @param status      NONE (not requested yet), RUNNING, FAILED ({@code error} says why; it can be requested again) or PAID
-     * @param requestable whether the button works once the deadline has passed; {@code blocker} says why not
-     * @param scoresSaved whether Gemini's scores are in (a failed payout is retried with the same scores)
-     * @param results     one per member once scored, with their score, feedback, evidence and payout
-     */
     record EvaluationDto(String status, String requestedBy, String requestedAt, String finishedAt, String error,
                          boolean requestable, String blocker, boolean scoresSaved, List<ResultDto> results) {
         static EvaluationDto of(Project project, User viewer, boolean running, boolean chainAvailable) {
@@ -160,7 +133,6 @@ final class Dtos {
         }
     }
 
-    /** One member's result: {@code change} is what they gained (positive) or lost (negative) against their stake. */
     record ResultDto(int userId, String name, String initials, boolean you, int score, String feedback, List<String> evidence,
                      int weightPercentage, BigDecimal staked, BigDecimal payout, BigDecimal change) {
         static ResultDto of(MemberResult result, Project project, User viewer) {
@@ -172,11 +144,9 @@ final class Dtos {
         }
     }
 
-    /** @param exists false if the pool isn't on the current chain (e.g. the chain's state was deleted) */
     record OnChainDto(boolean exists, BigDecimal totalDeposited, String depositsClose) {
     }
 
-    /** An invitation sent from this project that hasn't been answered yet. */
     record PendingInviteDto(int id, String email, String task, int weightPercentage, String invitedBy, boolean canCancel) {
         static PendingInviteDto of(Invite invite, User viewer) {
             return new PendingInviteDto(invite.inviteID(), invite.email(), invite.objective(), invite.weightPercentage(),
@@ -200,7 +170,6 @@ final class Dtos {
         }
     }
 
-    /** "Alex Morgan" → "AM", "alice" → "AL". */
     static String initials(String name) {
         String[] words = name.trim().split("\\s+");
         String initials = words.length >= 2

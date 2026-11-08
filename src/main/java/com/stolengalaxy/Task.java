@@ -2,7 +2,6 @@ package com.stolengalaxy;
 
 import jakarta.persistence.*;
 
-/** The piece of work one user is responsible for in one project. Create these with {@link Project#assignTask}. */
 @Entity
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"project_id", "user_id"}))
 public class Task {
@@ -19,12 +18,10 @@ public class Task {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    /** What the user has to do, e.g. "Build the project dashboard". */
     @Lob
     @Column(nullable = false)
     private String objective;
 
-    /** This task's share of the project's work, 1-100. A project's task weights must total 100 before its contract is created. */
     @Column(nullable = false)
     private int weightPercentage;
 

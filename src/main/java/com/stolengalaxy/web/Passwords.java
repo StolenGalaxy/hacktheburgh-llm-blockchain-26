@@ -7,7 +7,6 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 
-/** PBKDF2-SHA256 password hashing, stored as {@code pbkdf2$iterations$salt$hash}. */
 final class Passwords {
 
     private static final int ITERATIONS = 210_000;
