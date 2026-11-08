@@ -28,11 +28,6 @@ import java.util.Map;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-/**
- * The website's form handlers and JSON API.
- * Forms POST here and are redirected back (to the page they came from, with {@code ?error=} on failure);
- * pages then load their data from {@code /api/*}.
- */
 public final class WebRoutes {
 
     private static final String SESSION_USER = "userId";
@@ -46,7 +41,6 @@ public final class WebRoutes {
     private WebRoutes() {
     }
 
-    /** A form input problem: the user is sent back to {@code page} with {@code message} shown. */
     static final class FormException extends RuntimeException {
         final String page;
 
@@ -60,7 +54,6 @@ public final class WebRoutes {
         register(app, projectContracts, new ProjectEvaluator(projectContracts));
     }
 
-    /** With a given evaluator, e.g. one that doesn't call Gemini, for testing. */
     public static void register(Javalin app, ProjectContracts projectContracts, ProjectEvaluator projectEvaluator) {
         contracts = projectContracts;
         evaluator = projectEvaluator;
@@ -219,11 +212,6 @@ public final class WebRoutes {
         ctx.redirect(page, HttpStatus.SEE_OTHER);
     }
 
-    /**
-     * Records that the member commits their stake. The money moves on-chain, out of their wallet, when the creator
-     * creates the smart contract (see {@link ProjectContracts#create}). Their wallet must hold enough to cover it on
-     * top of what they've staked in other projects whose contracts haven't been created yet.
-     */
     private static void stake(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
@@ -293,7 +281,6 @@ public final class WebRoutes {
         ctx.redirect(page, HttpStatus.SEE_OTHER);
     }
 
-    /** Sets every task's weight at once, from fields named {@code weight-<taskId>}. */
     private static void updateWeights(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
@@ -317,10 +304,6 @@ public final class WebRoutes {
         ctx.redirect(page, HttpStatus.SEE_OTHER);
     }
 
-    /**
-     * Creates the project's pool on-chain and deposits every member's stake into it. Only the creator can do this,
-     * once every member has a task, every member has staked and the task weights total 100%.
-     */
     private static void createContract(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
@@ -337,10 +320,6 @@ public final class WebRoutes {
                 StandardCharsets.UTF_8), HttpStatus.SEE_OTHER);
     }
 
-    /**
-     * Starts the project's AI evaluation and payout (see {@link ProjectEvaluator}). Any member can request it once the
-     * deadline has passed. It runs in the background; the page shows its progress and then the results.
-     */
     private static void requestEvaluation(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
@@ -355,12 +334,6 @@ public final class WebRoutes {
         ctx.redirect(page, HttpStatus.SEE_OTHER);
     }
 
-    /**
-     * Removes the current user from a project, with their task and stake record. Only allowed before the smart
-     * contract is created: until then stakes are only recorded here, so no money has moved and nothing needs refunding.
-     * Their task's weight is freed, so the remaining members have to reassign it before the contract can be created.
-     * The creator can't leave, since only they can create the contract.
-     */
     private static void leaveProject(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
@@ -379,11 +352,6 @@ public final class WebRoutes {
                 HttpStatus.SEE_OTHER);
     }
 
-    /**
-     * Deletes a project with its tasks, stake records and invitations (pending ones disappear from inboxes).
-     * Only the creator can do this, and only before the smart contract is created, since after that the pool
-     * on-chain holds everyone's stakes.
-     */
     private static void deleteProject(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
@@ -402,7 +370,6 @@ public final class WebRoutes {
                 HttpStatus.SEE_OTHER);
     }
 
-    /** Temporary stand-in for a payment terminal: adds test USDC to the user's wallet. */
     private static void addFunds(Context ctx) {
         int userId = requireUserId(ctx);
         String projectParam = ctx.formParam("projectId");
@@ -424,7 +391,6 @@ public final class WebRoutes {
                 + " to your wallet. Your balance is " + Wallets.dollars(wallet.balance()) + ".", StandardCharsets.UTF_8), HttpStatus.SEE_OTHER);
     }
 
-    /** Withdraws a pending invite. Allowed for whoever sent it and for the project's creator. */
     private static void cancelInvite(Context ctx) {
         int userId = requireUserId(ctx);
         int projectId = intParam(ctx, "projectId", "/workspace.html");
@@ -562,7 +528,6 @@ public final class WebRoutes {
         return project;
     }
 
-    /** Like {@link #memberProject}, but refuses changes once the project's contract has been created. */
     private static Project unlockedProject(EntityManager em, int projectId, int userId, String page) {
         Project project = memberProject(em, projectId, userId);
         if (project.isLocked()) {
@@ -573,7 +538,6 @@ public final class WebRoutes {
         return project;
     }
 
-    /** Stakes the user has committed in projects whose contracts haven't been created, so are still in their wallet. */
     private static BigDecimal committedStakes(User user) {
         return user.projects().stream()
                 .filter(project -> project.hasStaked(user) && project.contractStatus() != Project.ContractStatus.CREATED)
@@ -607,7 +571,6 @@ public final class WebRoutes {
         return value;
     }
 
-    /** The trimmed value, or null if missing or blank. */
     private static String optional(Context ctx, String field, int maxLength, String page, String label) {
         String value = ctx.formParam(field);
         if (value == null || value.isBlank()) {
@@ -620,7 +583,6 @@ public final class WebRoutes {
         return value;
     }
 
-    /** A task weight from the form: a whole number of percent, 1-100. */
     private static int weight(Context ctx, String field, String page) {
         try {
             int weight = Integer.parseInt(ctx.formParam(field).trim());
@@ -633,7 +595,6 @@ public final class WebRoutes {
         throw new FormException(page, "Each weight must be a whole number from 1 to 100.");
     }
 
-    /** Task weights plus weights held by pending invites can't go over 100%. */
     private static void checkWeightFits(Project project, int weight, String page) {
         int free = 100 - project.assignedWeight() - project.reservedWeight();
         if (weight > free) {

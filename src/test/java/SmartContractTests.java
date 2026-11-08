@@ -13,7 +13,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Runs against a fresh local anvil chain started by the Bank (needs Foundry installed). */
 public class SmartContractTests {
 
     private static Bank bank;
@@ -39,7 +38,6 @@ public class SmartContractTests {
         User carol = joinAndStake(3, "carol", pool, 0.75f);
         User dave = joinAndStake(4, "dave", pool, 100f);
 
-        // Everyone was minted 100 USDC, so their balance is 100 minus their stake.
         assertBalance("89.5", alice);
         assertBalance("75", bob);
         assertBalance("99.25", carol);
@@ -59,10 +57,8 @@ public class SmartContractTests {
         assertThrows(IllegalStateException.class, () -> owner.payout(split), "can't pay out before the deadline");
         bank.skipTime(ONE_WEEK + 1);
 
-        // A payout must split exactly what was deposited (60).
         assertThrows(IllegalStateException.class, () -> owner.payout(Map.of(alice.walletAddress(), 10f)));
 
-        // Carol didn't do her task, so her stake goes to Alice and Bob.
         owner.payout(split);
         assertThrows(IllegalStateException.class, () -> owner.payout(Map.of(alice.walletAddress(), 60f)),
                 "a pool can only be paid out once");
@@ -96,7 +92,6 @@ public class SmartContractTests {
         }
     }
 
-    /** Logs a new user in (creating their wallet), mints them 100 USDC and stakes {@code stake} into the pool. */
     private static User joinAndStake(int id, String name, BigInteger pool, float stake) throws Exception {
         User user = bank.login(new User(id, name, null, name + "-gh"));
         bank.mintUSDC(user, 100f);

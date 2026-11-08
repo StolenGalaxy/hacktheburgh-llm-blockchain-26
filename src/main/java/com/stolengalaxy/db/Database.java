@@ -7,17 +7,14 @@ import jakarta.persistence.Persistence;
 import java.util.Map;
 import java.util.function.Function;
 
-/** Opens the "StolenGalaxy" persistence unit and runs work in short-lived EntityManagers. */
 public final class Database {
 
-    /** DB_URL (e.g. jdbc:sqlite:/tmp/test.db) overrides the JDBC URL in persistence.xml. */
     private static final EntityManagerFactory EMF = Persistence.createEntityManagerFactory("StolenGalaxy",
             System.getenv("DB_URL") == null ? Map.of() : Map.of("jakarta.persistence.jdbc.url", System.getenv("DB_URL")));
 
     private Database() {
     }
 
-    /** Runs {@code work} in a transaction, committing if it returns and rolling back if it throws. */
     public static <T> T transaction(Function<EntityManager, T> work) {
         EntityManager em = EMF.createEntityManager();
         try {
@@ -33,7 +30,6 @@ public final class Database {
         }
     }
 
-    /** Runs read-only {@code work}. Map entities to DTOs inside it: lazy relationships need the open EntityManager. */
     public static <T> T read(Function<EntityManager, T> work) {
         EntityManager em = EMF.createEntityManager();
         try {

@@ -27,31 +27,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Evaluates a project after its deadline and pays out its pool:
- * <ol>
- *     <li>{@link Gemini} scores each member's commits against their task,</li>
- *     <li>{@link EvaluationParser} turns the reply into {@link Evaluation}s,</li>
- *     <li>{@link PayoutAlgorithm} works out each member's share of the pool,</li>
- *     <li>the scores and payouts are saved (see {@link ProjectEvaluation}),</li>
- *     <li>the pool is settled on-chain and each share sent to its member's wallet ({@link ProjectContracts#payOut}).</li>
- * </ol>
- * Any member can request it. It runs in the background (Gemini can take a minute), and the page polls for the result.
- */
 public final class ProjectEvaluator {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProjectEvaluator.class);
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm:ss");
-    /** Payouts may differ from the pool by float rounding, but by more than this means the algorithm didn't share out the pool. */
     private static final BigDecimal ROUNDING_TOLERANCE = new BigDecimal("0.01");
 
-    /** Gets Gemini's reply ({"evaluations": [...]}) for a project. Swappable so the flow can be tested without Gemini. */
     @FunctionalInterface
     public interface Scorer {
         JsonObject score(Project project) throws Exception;
     }
 
-    /** A user-facing reason the evaluation didn't happen (or didn't finish). */
     public static final class EvaluationException extends RuntimeException {
         public EvaluationException(String message) {
             super(message);
@@ -60,7 +46,6 @@ public final class ProjectEvaluator {
 
     private final ProjectContracts contracts;
     private final Scorer scorer;
-    /** Projects being evaluated right now. A RUNNING evaluation that isn't in here was cut off by a restart. */
     private final Set<Integer> running = ConcurrentHashMap.newKeySet();
     private final ExecutorService worker = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "evaluator");
@@ -68,7 +53,6 @@ public final class ProjectEvaluator {
         return thread;
     });
 
-    /** Scores with Gemini (needs the GEMINI_API_KEY environment variable). */
     public ProjectEvaluator(ProjectContracts contracts) {
         this(contracts, ProjectEvaluator::askGemini);
     }
@@ -78,16 +62,10 @@ public final class ProjectEvaluator {
         this.scorer = scorer;
     }
 
-    /** Whether the project's evaluation is running in this server right now. */
     public boolean isRunning(int projectId) {
         return running.contains(projectId);
     }
 
-    /**
-     * Starts evaluating the project in the background, after checking it can be done. Returns straight away.
-     *
-     * @throws EvaluationException with a message to show the user if it can't be started
-     */
     public void request(int projectId, int userId) {
         if (!contracts.available()) {
             throw new EvaluationException("The blockchain isn't running, so the pool can't be paid out: "
@@ -123,10 +101,6 @@ public final class ProjectEvaluator {
         }
     }
 
-    /**
-     * Why evaluation can't be requested for this project (apart from the deadline, which the page counts down to),
-     * or null if it can.
-     */
     public static String blocker(Project project) {
         if (!project.deadline().isBefore(LocalDateTime.now())) {
             return "Evaluation can be requested once the deadline has passed.";
@@ -134,7 +108,6 @@ public final class ProjectEvaluator {
         return blockerOtherThanDeadline(project);
     }
 
-    /** Like {@link #blocker}, ignoring the deadline, for the page to know whether the button works once it's passed. */
     public static String blockerOtherThanDeadline(Project project) {
         if (project.contractStatus() != Project.ContractStatus.CREATED) {
             return "The smart contract was never created, so there's no pool to evaluate and pay out.";
@@ -146,7 +119,6 @@ public final class ProjectEvaluator {
         return null;
     }
 
-    /** The contract only allows settling once the pool's own timer (set a second or so after the deadline) has run out. */
     private void checkPoolClosed(long poolId) {
         ProjectContracts.PoolState pool = contracts.poolState(poolId);
         if (pool == null) {
@@ -187,7 +159,6 @@ public final class ProjectEvaluator {
         }
     }
 
-    /** The payouts saved by an earlier attempt that got as far as scoring, or null if there are none. */
     private static Map<Integer, BigDecimal> savedPayouts(Project project) {
         ProjectEvaluation evaluation = project.evaluation();
         if (evaluation == null || !evaluation.hasScores()) {
@@ -198,7 +169,6 @@ public final class ProjectEvaluator {
         return payouts;
     }
 
-    /** Steps 1-4: Gemini's scores, parsed and checked, turned into payouts, and saved. Returns the payouts. */
     private Map<Integer, BigDecimal> score(int projectId) {
         // Load everything Gemini and the payout algorithm read, so the entities work after the EntityManager closes
         Project project = Database.read(em -> {
@@ -251,7 +221,6 @@ public final class ProjectEvaluator {
         return payouts;
     }
 
-    /** Gemini must score every member exactly once, and nobody else. */
     private static void checkEveryoneScored(Project project, List<Evaluation> evaluations) {
         Map<Integer, String> members = new LinkedHashMap<>();
         project.tasks().forEach(task -> members.put(task.user().userID(), task.user().username()));
@@ -276,10 +245,6 @@ public final class ProjectEvaluator {
         }
     }
 
-    /**
-     * Turns the payout algorithm's doubles into exact USDC amounts (6 decimal places) that add up to exactly what the
-     * pool holds, as the contract requires. Rounding leftovers (fractions of a cent) go to the largest payout.
-     */
     static Map<Integer, BigDecimal> exactPayouts(Map<Integer, Double> raw, BigDecimal pool) {
         Map<Integer, BigDecimal> exact = new LinkedHashMap<>();
         for (Map.Entry<Integer, Double> entry : raw.entrySet()) {

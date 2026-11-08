@@ -7,7 +7,6 @@ import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.util.List;
 
-/** One member's result in a {@link ProjectEvaluation}: Gemini's score, feedback and evidence, and their payout. */
 @Entity
 public class MemberResult {
 
@@ -25,22 +24,18 @@ public class MemberResult {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    /** 0-10, from Gemini. */
     @Column(nullable = false)
     private int score;
 
     @Lob
     private String feedback;
 
-    /** Gemini's evidence (e.g. commits it looked at), as a JSON array of strings. */
     @Lob
     private String evidence;
 
-    /** The member's task weight when they were scored. */
     @Column(nullable = false)
     private int weightPercentage;
 
-    /** What the member was paid out of the pool, in USDC. */
     @Column(nullable = false, precision = 19, scale = 6)
     private BigDecimal payout;
 

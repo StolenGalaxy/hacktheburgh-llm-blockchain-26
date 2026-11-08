@@ -20,15 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
-/**
- * Creates each project's pool in the ProjectDeposit contract and deposits every member's stake into it.
- *
- * <p>Each member's stake is deposited from their own wallet (see {@link Wallets}), so every member needs at least
- * the stake in their wallet. That's checked for everyone before anything happens on-chain.</p>
- *
- * <p>Creation is safe to retry. The pool ID is saved before anything happens on-chain, and each step checks the
- * chain first (does the pool exist? how much has this wallet deposited?), so running it again only does what's missing.</p>
- */
 public final class ProjectContracts implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProjectContracts.class);
@@ -37,10 +28,6 @@ public final class ProjectContracts implements AutoCloseable {
     private final Bank bank; // null when the chain couldn't start
     private final String unavailableReason;
     private final Wallets wallets;
-    /**
-     * One creation or payout at a time, so two clicks can't both deposit or settle, and the owner account never sends
-     * two transactions at once. Both are rare, so one lock is enough.
-     */
     private final ReentrantLock creationLock = new ReentrantLock();
 
     private ProjectContracts(Bank bank, String unavailableReason) {
@@ -49,12 +36,10 @@ public final class ProjectContracts implements AutoCloseable {
         this.wallets = new Wallets(bank);
     }
 
-    /** The users' own wallets, on the same chain. */
     public Wallets wallets() {
         return wallets;
     }
 
-    /** Starts the persistent local chain in {@code stateDir}. If it can't start, the site still runs without contracts. */
     public static ProjectContracts start(Path stateDir) {
         LOG.info("Starting local blockchain (state in {})", stateDir.toAbsolutePath());
         try {
@@ -75,7 +60,6 @@ public final class ProjectContracts implements AutoCloseable {
         return bank != null && bank.isRunning();
     }
 
-    /** Why the chain isn't available, or null if it is. */
     public String unavailableReason() {
         if (bank == null) {
             return "it didn't start: " + unavailableReason + ". See the server log, then restart the app";
@@ -83,18 +67,15 @@ public final class ProjectContracts implements AutoCloseable {
         return bank.isRunning() ? null : "anvil stopped running. Restart the app";
     }
 
-    /** A user-facing reason contract creation didn't happen. */
     public static final class CreationException extends RuntimeException {
         CreationException(String message) {
             super(message);
         }
     }
 
-    /** What the chain says about a pool right now. */
     public record PoolState(boolean exists, BigDecimal totalDeposited, Instant depositsCloseAt) {
     }
 
-    /** Reads the pool's state from the chain, or returns null if the chain isn't reachable. */
     public PoolState poolState(long poolId) {
         if (!available()) {
             return null;
@@ -109,12 +90,6 @@ public final class ProjectContracts implements AutoCloseable {
         }
     }
 
-    /**
-     * Creates the project's pool and deposits each member's stake. Only the project's creator can do this, and only
-     * once the project is ready (see {@link Project#contractBlockers()}).
-     *
-     * @throws CreationException with a message to show the user if it can't be done or fails partway
-     */
     public void create(int projectId, int requestingUserId) {
         if (!available()) {
             throw new CreationException("The blockchain isn't running, so the contract can't be created: "
@@ -133,14 +108,12 @@ public final class ProjectContracts implements AutoCloseable {
         }
     }
 
-    /** A detached snapshot of what has to happen on-chain. {@code poolId} is null until creation has started. */
     private record Plan(BigInteger poolId, BigDecimal stake, LocalDateTime deadline, List<Member> members) {
     }
 
     private record Member(int userId, String name) {
     }
 
-    /** The project, if {@code requestingUserId} may create its contract now. */
     private static Project validated(EntityManager em, int projectId, int requestingUserId) {
         Project project = em.find(Project.class, projectId);
         if (project == null) {
@@ -165,7 +138,6 @@ public final class ProjectContracts implements AutoCloseable {
         return new Plan(poolId, project.stakeAmount(), project.deadline(), members);
     }
 
-    /** Step 0 (chain, read-only): every member must have what they still owe in their wallet. */
     private void checkFunds(Plan plan) {
         List<String> shortfalls = new ArrayList<>();
         try {
@@ -188,7 +160,6 @@ public final class ProjectContracts implements AutoCloseable {
         }
     }
 
-    /** Step 1 (database): check the project can have a contract, and save its pool ID before touching the chain. */
     private Plan reserve(int projectId, int requestingUserId) {
         return Database.transaction(em -> {
             Project project = validated(em, projectId, requestingUserId);
@@ -197,7 +168,6 @@ public final class ProjectContracts implements AutoCloseable {
         });
     }
 
-    /** Step 2 (chain): create the pool if it isn't there yet, then deposit whatever each member still owes. */
     private Map<Integer, String> createOnChain(Plan plan) {
         String step = "creating the pool";
         try {
@@ -234,7 +204,6 @@ public final class ProjectContracts implements AutoCloseable {
         }
     }
 
-    /** Step 3 (database): save the members' wallet addresses and mark the contract as created. */
     private void record(int projectId, Map<Integer, String> wallets) {
         Database.transaction(em -> {
             wallets.forEach((userId, address) -> em.find(User.class, userId).setWalletAddress(address));
@@ -243,22 +212,12 @@ public final class ProjectContracts implements AutoCloseable {
         });
     }
 
-    /** A user-facing reason a payout didn't happen (or didn't finish). */
     public static final class PayoutException extends RuntimeException {
         PayoutException(String message) {
             super(message);
         }
     }
 
-    /**
-     * Pays out a pool: settles it with {@code payouts} (user ID -> USDC, which must add up to exactly what the pool
-     * holds), then withdraws each member's share from the pool into their own wallet.
-     *
-     * <p>Safe to retry: it skips settling if the pool is already settled, and only withdraws what's still claimable,
-     * so running it again finishes the job without paying anyone twice.</p>
-     *
-     * @throws PayoutException with a message to show the user if it can't be done or fails partway
-     */
     public void payOut(long poolId, Map<Integer, BigDecimal> payouts) {
         if (!available()) {
             throw new PayoutException("The blockchain isn't running, so the pool can't be paid out: " + unavailableReason() + ".");
@@ -306,11 +265,6 @@ public final class ProjectContracts implements AutoCloseable {
         }
     }
 
-    /**
-     * Seconds from the chain's latest block until the deadline (entered in the server's time zone), at least 1.
-     * The contract adds this to the next block's timestamp, which is never earlier than the latest one, so deposits
-     * close at the deadline or a second or so after it, never before.
-     */
     private static long secondsUntil(LocalDateTime deadline, long chainNow) {
         long end = deadline.atZone(ZoneId.systemDefault()).toEpochSecond();
         return Math.max(1, end - chainNow);

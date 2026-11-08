@@ -13,13 +13,9 @@ import java.util.Set;
 @Entity
 public class Project {
 
-    /** Where the project's on-chain pool is up to. */
     public enum ContractStatus {
-        /** Not created yet: tasks, weights, members and stakes can still change. */
         NONE,
-        /** Creation started but didn't finish (e.g. the chain went down); creating it again picks up where it left off. */
         CREATING,
-        /** The pool exists and holds every member's stake. */
         CREATED
     }
 
@@ -36,11 +32,9 @@ public class Project {
 
     private String repoURL;
 
-    /** Deadline as entered by the creator (no time zone). */
     @Column(nullable = false)
     private LocalDateTime deadline;
 
-    /** Stake each member deposits, in USDC. */
     @Column(nullable = false, precision = 19, scale = 6)
     private BigDecimal stakeAmount;
 
@@ -48,21 +42,18 @@ public class Project {
     @JoinColumn(name = "created_by", nullable = false)
     private User createdBy;
 
-    /** Members of the project. This side owns the many-to-many join table. */
     @ManyToMany
     @JoinTable(name = "project_members",
             joinColumns = @JoinColumn(name = "project_id"),
             inverseJoinColumns = @JoinColumn(name = "user_id"))
     private List<User> users = new ArrayList<>();
 
-    /** Members who have deposited their stake. */
     @ManyToMany
     @JoinTable(name = "project_stakes",
             joinColumns = @JoinColumn(name = "project_id"),
             inverseJoinColumns = @JoinColumn(name = "user_id"))
     private Set<User> stakedUsers = new LinkedHashSet<>();
 
-    /** One task per member; tasks are saved and deleted together with the project. */
     @OneToMany(mappedBy = "project", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("taskID")
     private List<Task> tasks = new ArrayList<>();
@@ -74,18 +65,12 @@ public class Project {
     @Column(nullable = false)
     private ContractStatus contractStatus = ContractStatus.NONE;
 
-    /** The pool's ID in the ProjectDeposit contract (a uint256 on-chain). Random, so it never clashes across database resets. */
     private Long poolId;
 
-    /** Address of the ProjectDeposit contract holding the pool. */
     private String contractAddress;
 
     private LocalDateTime contractCreatedAt;
 
-    /**
-     * The AI evaluation and payout, once a member has requested it. The owning side is
-     * {@link ProjectEvaluation#project()}, so this adds no column to the project table.
-     */
     @OneToOne(mappedBy = "project")
     private ProjectEvaluation evaluation;
 
@@ -93,7 +78,6 @@ public class Project {
         // for JPA
     }
 
-    /** Creates a project with its creator as the first member. */
     public Project(String name, String projectDescription, String repoURL,
                    LocalDateTime deadline, BigDecimal stakeAmount, User createdBy) {
         this.name = name;
@@ -105,7 +89,6 @@ public class Project {
         addUser(createdBy);
     }
 
-    /** Adds a member to the project, keeping both sides of the relationship in sync. */
     public void addUser(User user) {
         if (!users.contains(user)) {
             users.add(user);
@@ -113,7 +96,6 @@ public class Project {
         }
     }
 
-    /** Removes a member, their task and their stake record. Only before the contract exists, since it holds their stake. */
     public void removeUser(User user) {
         requireUnlocked();
         users.remove(user);
@@ -125,11 +107,6 @@ public class Project {
         });
     }
 
-    /**
-     * Unlinks the project from its members before it's deleted with {@code em.remove}. The tasks, invites and
-     * membership/stake rows go with the project; this updates the users' side so cached users don't keep it.
-     * Only before the contract exists: after that, the pool on-chain holds the members' stakes.
-     */
     public void prepareForDelete() {
         requireUnlocked();
         for (User user : users) {
@@ -138,7 +115,6 @@ public class Project {
         }
     }
 
-    /** Assigns a task to a user, adding them as a member if they aren't one already. */
     public Task assignTask(User user, String objective, int weightPercentage) {
         requireUnlocked();
         if (taskFor(user).isPresent()) {
@@ -166,22 +142,16 @@ public class Project {
         stakedUsers.add(user);
     }
 
-    /** Sum of task weights. Must be exactly 100 before the contract is created. */
     public int assignedWeight() {
         return tasks.stream().mapToInt(Task::weightPercentage).sum();
     }
 
-    /** Weight held by pending invites; it becomes task weight when they're accepted. */
     public int reservedWeight() {
         return invites.stream()
                 .filter(invite -> invite.status() == Invite.Status.PENDING)
                 .mapToInt(Invite::weightPercentage).sum();
     }
 
-    /**
-     * What still stops the smart contract being created; empty when it's ready.
-     * Ready means every member has a task, every member has staked, and task weights total 100%.
-     */
     public List<String> contractBlockers() {
         List<String> blockers = new ArrayList<>();
         if (deadline.isBefore(LocalDateTime.now())) {
@@ -207,7 +177,6 @@ public class Project {
         return blockers;
     }
 
-    /** Marks contract creation as started, keeping the pool ID from an earlier attempt if there was one. */
     public void beginContract(long newPoolId) {
         if (contractStatus == ContractStatus.CREATED) {
             throw new IllegalStateException("The contract has already been created");
@@ -227,7 +196,6 @@ public class Project {
         this.contractCreatedAt = LocalDateTime.now();
     }
 
-    /** Once contract creation has started, tasks, weights, members and stakes are fixed. */
     public boolean isLocked() {
         return contractStatus != ContractStatus.NONE;
     }
@@ -260,7 +228,6 @@ public class Project {
     public Long poolId() { return poolId; }
     public String contractAddress() { return contractAddress; }
     public LocalDateTime contractCreatedAt() { return contractCreatedAt; }
-    /** Null until evaluation has been requested. */
     public ProjectEvaluation evaluation() { return evaluation; }
 
     void setEvaluation(ProjectEvaluation evaluation) { this.evaluation = evaluation; }
