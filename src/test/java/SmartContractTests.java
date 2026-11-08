@@ -46,6 +46,20 @@ public class SmartContractTests {
         assertBalance("0", dave);
     }
 
+    /** anvil only mines on a transaction, so after the chain sits idle the latest block is old. chainTime() must still be "now". */
+    @Test
+    public void testChainTimeIsCurrentAfterIdle() throws Exception {
+        long before = bank.chainTime();
+        Thread.sleep(4000); // idle: no transactions, so no new blocks
+        long chainNow = bank.chainTime();
+        assertTrue(chainNow - before >= 3, "chain time should have moved on while idle, but went " + before + " -> " + chainNow);
+
+        BigInteger pool = BigInteger.valueOf(99);
+        bank.ownerContract(pool).createPool(60);
+        long closesAt = bank.poolEndTime(pool).longValueExact();
+        assertTrue(closesAt - (chainNow + 60) <= 1, "pool should close 60s from now, not 60s plus the idle time");
+    }
+
     @Test
     public void testSettlePool() throws Exception {
         BigInteger pool = BigInteger.TWO;

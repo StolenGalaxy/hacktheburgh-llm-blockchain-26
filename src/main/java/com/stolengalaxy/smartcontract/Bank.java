@@ -242,8 +242,13 @@ public class Bank implements AutoCloseable {
         return new BigDecimal(view(poolContract, "claimable", new Uint256(poolId), new Address(walletAddress)), 6);
     }
 
-    /** The latest block's timestamp (unix seconds): "now" as the contracts see it. */
+    /**
+     * "Now" as the contracts see it (unix seconds). anvil only mines a block when a transaction arrives, so the latest
+     * block can be hours old (e.g. overnight, or after a restart). A fresh block is mined first so its timestamp is
+     * the chain's current time, not the time of the last transaction.
+     */
     public long chainTime() throws IOException {
+        new Request<>("evm_mine", List.of(), rpc, VoidResponse.class).send();
         return web3j.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false).send().getBlock().getTimestamp().longValueExact();
     }
 

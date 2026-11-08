@@ -1,5 +1,9 @@
 package com.stolengalaxy.model;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -7,43 +11,51 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
+/**
+ * Reads commits through the GitHub REST API. (Scraping github.com's HTML pages broke: they
+ * now return 504 to non-browser clients.) Set GITHUB_TOKEN to raise the rate limit from
+ * 60 to 5000 requests an hour.
+ */
 public class GitHubClient {
 
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(10))
             .build();
 
-    private static final Pattern COMMIT_SHA = Pattern.compile("/commit/([0-9a-f]{7,40})\",\"authoredDate\":\"");
+    private static final String API = "https://api.github.com";
+    private static final int PER_PAGE = 100;
 
     public static List<String> listCommitShas(String owner, String repo, String branch, String author)
             throws IOException, InterruptedException {
-        String commitsUrl = "https://github.com/" + owner + "/" + repo + "/commits/" + branch
-                + "?author=" + encode(author);
-
-        List<String> commits = new ArrayList<>(findShas(get(commitsUrl)));
-        if (commits.isEmpty()) {
-            return commits;
-        }
-        String newestCommit = commits.get(0);
-
-        while (true) {
-            String pageUrl = commitsUrl + "&after=" + encode(newestCommit + " " + (commits.size() - 1));
-            List<String> newCommits = findShas(get(pageUrl));
-            newCommits.removeAll(commits);
-            if (newCommits.isEmpty()) {
+        List<String> commits = new ArrayList<>();
+        for (int page = 1; ; page++) {
+            String url = API + "/repos/" + owner + "/" + repo + "/commits"
+                    + "?sha=" + encode(branch)
+                    + "&author=" + encode(author)
+                    + "&per_page=" + PER_PAGE
+                    + "&page=" + page;
+            String body = get(url, "application/vnd.github+json", true);
+            if (body == null) {
+                return commits; // repository has no commits yet
+            }
+            JsonArray array = JsonParser.parseString(body).getAsJsonArray();
+            for (JsonElement element : array) {
+                commits.add(element.getAsJsonObject().get("sha").getAsString());
+            }
+            if (array.size() < PER_PAGE) {
                 return commits;
             }
-            commits.addAll(newCommits);
         }
     }
 
     public static String fetchPatch(String owner, String repo, String sha) throws IOException, InterruptedException {
-        return cleanPatch(get("https://github.com/" + owner + "/" + repo + "/commit/" + sha + ".patch"));
+        String url = API + "/repos/" + owner + "/" + repo + "/commits/" + sha;
+        return cleanPatch(get(url, "application/vnd.github.patch", false));
     }
 
     private static final int MAX_FILE_DIFF_CHARS = 20_000;
@@ -63,29 +75,37 @@ public class GitHubClient {
         return out.toString();
     }
 
-    private static List<String> findShas(String page) {
-        List<String> shas = new ArrayList<>();
-        Matcher matcher = COMMIT_SHA.matcher(page);
-        while (matcher.find()) {
-            shas.add(matcher.group(1));
-        }
-        return shas;
-    }
-
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private static String get(String url) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+    /**
+     * @param emptyOk when true, a 409 (repository has no commits yet) returns null instead of throwing.
+     */
+    private static String get(String url, String accept, boolean emptyOk) throws IOException, InterruptedException {
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(30))
                 .header("User-Agent", "htb-commit-evaluator")
-                .build();
-
-        HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if (response.statusCode() != 200) {
-            throw new IOException("GitHub returned " + response.statusCode() + " for " + url);
+                .header("Accept", accept)
+                .header("X-GitHub-Api-Version", "2022-11-28");
+        String token = System.getenv("GITHUB_TOKEN");
+        if (token != null && !token.isBlank()) {
+            request.header("Authorization", "Bearer " + token.trim());
         }
-        return response.body();
+
+        HttpResponse<String> response = HTTP.send(request.build(), HttpResponse.BodyHandlers.ofString());
+        int status = response.statusCode();
+
+        if (status == 200) {
+            return response.body();
+        }
+        if (emptyOk && status == 409) {
+            return null;
+        }
+        if ((status == 403 || status == 429)
+                && "0".equals(response.headers().firstValue("x-ratelimit-remaining").orElse(null))) {
+            throw new IOException("GitHub API rate limit reached (set GITHUB_TOKEN on the server to raise it)");
+        }
+        throw new IOException("GitHub returned " + status + " for " + url);
     }
 }

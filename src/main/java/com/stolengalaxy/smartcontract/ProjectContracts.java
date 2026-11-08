@@ -307,9 +307,9 @@ public final class ProjectContracts implements AutoCloseable {
     }
 
     /**
-     * Seconds from the chain's latest block until the deadline (entered in the server's time zone), at least 1.
-     * The contract adds this to the next block's timestamp, which is never earlier than the latest one, so deposits
-     * close at the deadline or a second or so after it, never before.
+     * Seconds from the chain's current time until the deadline (entered in the server's time zone), at least 1.
+     * The contract adds this to the next block's timestamp, which is never earlier than {@code chainNow} (a block
+     * {@link Bank#chainTime()} has just mined), so deposits close at the deadline or a second or so after it, never before.
      */
     private static long secondsUntil(LocalDateTime deadline, long chainNow) {
         long end = deadline.atZone(ZoneId.systemDefault()).toEpochSecond();
