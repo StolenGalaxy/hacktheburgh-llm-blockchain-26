@@ -82,6 +82,13 @@ public class Project {
 
     private LocalDateTime contractCreatedAt;
 
+    /**
+     * The AI evaluation and payout, once a member has requested it. The owning side is
+     * {@link ProjectEvaluation#project()}, so this adds no column to the project table.
+     */
+    @OneToOne(mappedBy = "project")
+    private ProjectEvaluation evaluation;
+
     protected Project() {
         // for JPA
     }
@@ -253,6 +260,10 @@ public class Project {
     public Long poolId() { return poolId; }
     public String contractAddress() { return contractAddress; }
     public LocalDateTime contractCreatedAt() { return contractCreatedAt; }
+    /** Null until evaluation has been requested. */
+    public ProjectEvaluation evaluation() { return evaluation; }
+
+    void setEvaluation(ProjectEvaluation evaluation) { this.evaluation = evaluation; }
 
     public void setName(String name) { this.name = name; }
     public void setProjectDescription(String projectDescription) { this.projectDescription = projectDescription; }

@@ -17,6 +17,9 @@ public interface ISmartContract {
     /** Owner only, once per pool, after the deadline: wallet address -> amount. The amounts must add up to exactly what was deposited. */
     void payout(Map<String, Float> payouts);
 
+    /** Like {@link #payout}, but exact: amounts have at most 6 decimal places (floats can't hold every USDC amount). */
+    void payoutExact(Map<String, BigDecimal> payouts);
+
     /** After payout, moves this wallet's share out of the pool and back into the wallet. */
     void withdraw();
 }

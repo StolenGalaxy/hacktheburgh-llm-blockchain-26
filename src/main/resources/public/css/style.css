@@ -289,6 +289,17 @@ textarea { min-height: 80px; resize: vertical; }
 .pool-value { font-size: 38px; font-weight: 500; letter-spacing: -0.04em; }
 .countdown { font-size: 30px; font-weight: 500; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .countdown.done { color: var(--green); font-size: 22px; }
+/* Evaluation results: one card per member */
+.result-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.result-score { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.result-money { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
+.result-money strong { font-size: 18px; font-weight: 600; }
+.gain { color: var(--green); }
+.loss { color: var(--error); }
+.result-feedback { margin: 0; line-height: 1.5; white-space: pre-line; }
+.evidence summary { cursor: pointer; color: var(--muted); }
+.evidence ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
+
 /* Greyed out (rather than faded green) until the deadline */
 #request-evaluation-button:disabled { background: var(--line); border-color: var(--line); color: var(--muted); opacity: 1; cursor: not-allowed; }
 

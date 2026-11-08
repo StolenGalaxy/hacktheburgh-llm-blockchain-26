@@ -37,7 +37,10 @@ public final class ProjectContracts implements AutoCloseable {
     private final Bank bank; // null when the chain couldn't start
     private final String unavailableReason;
     private final Wallets wallets;
-    /** One creation at a time, so two clicks can't both deposit. Creating a contract is rare, so one lock is enough. */
+    /**
+     * One creation or payout at a time, so two clicks can't both deposit or settle, and the owner account never sends
+     * two transactions at once. Both are rare, so one lock is enough.
+     */
     private final ReentrantLock creationLock = new ReentrantLock();
 
     private ProjectContracts(Bank bank, String unavailableReason) {
@@ -238,6 +241,69 @@ public final class ProjectContracts implements AutoCloseable {
             em.find(Project.class, projectId).markContractCreated(bank.poolContractAddress());
             return null;
         });
+    }
+
+    /** A user-facing reason a payout didn't happen (or didn't finish). */
+    public static final class PayoutException extends RuntimeException {
+        PayoutException(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * Pays out a pool: settles it with {@code payouts} (user ID -> USDC, which must add up to exactly what the pool
+     * holds), then withdraws each member's share from the pool into their own wallet.
+     *
+     * <p>Safe to retry: it skips settling if the pool is already settled, and only withdraws what's still claimable,
+     * so running it again finishes the job without paying anyone twice.</p>
+     *
+     * @throws PayoutException with a message to show the user if it can't be done or fails partway
+     */
+    public void payOut(long poolId, Map<Integer, BigDecimal> payouts) {
+        if (!available()) {
+            throw new PayoutException("The blockchain isn't running, so the pool can't be paid out: " + unavailableReason() + ".");
+        }
+        BigInteger id = BigInteger.valueOf(poolId);
+        creationLock.lock();
+        String step = "reading the pool";
+        try {
+            if (bank.poolEndTime(id).signum() == 0) {
+                throw new PayoutException("This project's pool isn't on the current blockchain (its state was probably deleted), so it can't be paid out.");
+            }
+            if (!bank.isSettled(id)) {
+                BigDecimal held = bank.totalDeposited(id);
+                BigDecimal total = payouts.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                if (total.compareTo(held) != 0) {
+                    throw new PayoutException("The payouts add up to " + Wallets.dollars(total) + ", but the pool holds "
+                            + Wallets.dollars(held) + ". They must match exactly.");
+                }
+                step = "settling the pool";
+                Map<String, BigDecimal> byWallet = new LinkedHashMap<>();
+                for (Map.Entry<Integer, BigDecimal> payout : payouts.entrySet()) {
+                    if (payout.getValue().signum() > 0) { // a zero share has nothing to claim
+                        byWallet.put(bank.openWallet(payout.getKey()), payout.getValue());
+                    }
+                }
+                bank.ownerContract(id).payoutExact(byWallet);
+                LOG.info("Settled pool {}: {}", id, byWallet);
+            }
+            for (Integer userId : payouts.keySet()) {
+                step = "sending user " + userId + "'s share to their wallet";
+                String address = bank.openWallet(userId); // makes sure it has gas to withdraw
+                if (bank.claimableOf(id, address).signum() > 0) {
+                    bank.contractFor(new User(userId, "user " + userId, address, null), id).withdraw();
+                }
+            }
+        } catch (PayoutException e) {
+            throw e;
+        } catch (Exception e) {
+            LOG.error("Paying out pool {} failed while {}", id, step, e);
+            String cause = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage().lines().findFirst().orElse("");
+            throw new PayoutException("Paying out the pool failed while " + step + ": " + cause
+                    + ". Nothing has been lost. Request evaluation again to finish (the scores are kept).");
+        } finally {
+            creationLock.unlock();
+        }
     }
 
     /**

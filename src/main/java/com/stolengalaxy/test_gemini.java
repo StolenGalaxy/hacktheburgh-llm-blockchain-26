@@ -38,7 +38,7 @@ public class test_gemini {
         }
         System.out.println(evaluations);
         //ArrayList<User> users = evaluations.get("")
-        HashMap<Integer, Double> payouts = payoutAlgorithm.calculatePayout(evaluations, project1);
+        HashMap<Integer, Double> payouts = PayoutAlgorithm.calculatePayout(evaluations, project1);
 
         System.out.println(payouts);
     }

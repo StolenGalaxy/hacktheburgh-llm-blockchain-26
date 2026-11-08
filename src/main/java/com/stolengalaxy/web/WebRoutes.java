@@ -2,6 +2,7 @@ package com.stolengalaxy.web;
 
 import com.stolengalaxy.Invite;
 import com.stolengalaxy.Project;
+import com.stolengalaxy.ProjectEvaluator;
 import com.stolengalaxy.Task;
 import com.stolengalaxy.User;
 import com.stolengalaxy.db.Database;
@@ -40,6 +41,7 @@ public final class WebRoutes {
     private static final Pattern GITHUB_REPO = Pattern.compile("https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+");
 
     private static ProjectContracts contracts;
+    private static ProjectEvaluator evaluator;
 
     private WebRoutes() {
     }
@@ -55,7 +57,13 @@ public final class WebRoutes {
     }
 
     public static void register(Javalin app, ProjectContracts projectContracts) {
+        register(app, projectContracts, new ProjectEvaluator(projectContracts));
+    }
+
+    /** With a given evaluator, e.g. one that doesn't call Gemini, for testing. */
+    public static void register(Javalin app, ProjectContracts projectContracts, ProjectEvaluator projectEvaluator) {
         contracts = projectContracts;
+        evaluator = projectEvaluator;
         app.exception(FormException.class, (e, ctx) -> {
             String separator = e.page.contains("?") ? "&" : "?";
             ctx.redirect(e.page + separator + "error=" + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8),
@@ -93,6 +101,7 @@ public final class WebRoutes {
         app.post("/projects/leave", WebRoutes::leaveProject);
         app.post("/projects/delete", WebRoutes::deleteProject);
         app.post("/contract", WebRoutes::createContract);
+        app.post("/evaluation", WebRoutes::requestEvaluation);
         app.post("/wallet/add", WebRoutes::addFunds);
 
         app.get("/api/health", ctx -> ctx.json(Map.of("status", "ok")));
@@ -329,6 +338,24 @@ public final class WebRoutes {
     }
 
     /**
+     * Starts the project's AI evaluation and payout (see {@link ProjectEvaluator}). Any member can request it once the
+     * deadline has passed. It runs in the background; the page shows its progress and then the results.
+     */
+    private static void requestEvaluation(Context ctx) {
+        int userId = requireUserId(ctx);
+        int projectId = intParam(ctx, "projectId", "/workspace.html");
+        String page = projectPage(projectId);
+
+        Database.read(em -> memberProject(em, projectId, userId)); // members only; the rest is checked by request()
+        try {
+            evaluator.request(projectId, userId);
+        } catch (ProjectEvaluator.EvaluationException e) {
+            throw new FormException(page, e.getMessage());
+        }
+        ctx.redirect(page, HttpStatus.SEE_OTHER);
+    }
+
+    /**
      * Removes the current user from a project, with their task and stake record. Only allowed before the smart
      * contract is created: until then stakes are only recorded here, so no money has moved and nothing needs refunding.
      * Their task's weight is freed, so the remaining members have to reassign it before the contract can be created.
@@ -502,7 +529,8 @@ public final class WebRoutes {
             if (!project.isMember(user)) {
                 throw new ForbiddenResponse("You aren't a member of this project");
             }
-            return Dtos.ProjectDto.of(project, user, Dtos.ContractDto.of(project, contracts));
+            return Dtos.ProjectDto.of(project, user, Dtos.ContractDto.of(project, contracts),
+                    Dtos.EvaluationDto.of(project, user, evaluator.isRunning(projectId), contracts.available()));
         }));
     }
 

@@ -74,6 +74,16 @@
           <section class="primary-col stack">
             <div class="notice" id="stake-notice" hidden></div>
 
+            <!-- Shown once Gemini has scored the members: each one's score, payout, feedback and evidence -->
+            <section class="stack" id="results-section" hidden>
+              <div class="row between wrap">
+                <h2>Evaluation results</h2>
+                <span class="badge" id="results-badge"></span>
+              </div>
+              <p class="muted small" id="results-summary"></p>
+              <ul class="task-list" id="results-list"></ul>
+            </section>
+
             <div class="row between wrap">
               <div class="row">
                 <h2>Tasks</h2>
@@ -101,8 +111,11 @@
                 <div class="countdown" id="evaluation-countdown" role="timer" aria-live="off"></div>
                 <p class="muted small" id="evaluation-countdown-label"></p>
               </div>
-              <!-- Any member can request it once the deadline has passed. Not wired up yet: clicking does nothing. -->
-              <button class="btn primary wide" type="button" id="request-evaluation-button" disabled>Request evaluation</button>
+              <!-- Any member can request it once the deadline has passed. It runs in the background; the page polls for the result. -->
+              <form method="post" action="/evaluation" id="evaluation-form">
+                <input type="hidden" name="projectId">
+                <button class="btn primary wide" type="submit" id="request-evaluation-button" disabled>Request evaluation</button>
+              </form>
               <button class="link-btn" type="button" data-open-dialog="evaluation" style="align-self: flex-start">How evaluation works ↗</button>
             </section>
 
@@ -329,8 +342,8 @@
 <dialog id="evaluation">
   <div class="stack">
     <h2>How evaluation works</h2>
-    <p class="muted">At the deadline, an LLM scores each member's code contribution from 0–10, with feedback and commit evidence.</p>
-    <p class="muted">The backend settles the pool and members withdraw their allocation.</p>
+    <p class="muted">After the deadline, any member can request evaluation. Gemini scores each member's commits against their task from 0–10, with feedback and commit evidence.</p>
+    <p class="muted">Payouts are worked out from the scores and task weights. The pool is settled on the blockchain and each member's share is sent straight to their wallet.</p>
     <p class="muted">Non-code work is not measured.</p>
     <form class="dialog-actions" method="dialog">
       <button class="btn">Close</button>

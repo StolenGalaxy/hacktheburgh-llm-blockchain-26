@@ -125,7 +125,13 @@ function renderProject(project, me) {
   const stakedCount = project.members.filter((member) => member.staked).length;
   const allStaked = stakedCount === project.members.length;
   const status = $("#project-status");
-  if (project.contract.status === "CREATED") {
+  if (project.evaluation.status === "PAID") {
+    status.className = "badge green";
+    status.textContent = "Paid out";
+  } else if (project.evaluation.status === "RUNNING") {
+    status.className = "badge amber";
+    status.textContent = "Evaluating";
+  } else if (project.contract.status === "CREATED") {
     status.className = "badge green";
     status.textContent = project.deadlinePassed ? "Awaiting settlement" : "Contract live";
   } else if (project.deadlinePassed) {
@@ -210,7 +216,7 @@ function renderProject(project, me) {
 
   renderWeights(project);
   renderContract(project);
-  startCountdown(project.deadlineEpochMillis);
+  renderEvaluation(project);
 
   // Until the contract is created, members can leave and the creator can delete the project.
   // The creator can't leave, since only they can create the contract.
@@ -246,41 +252,150 @@ function renderStakeWallet(project, wallet) {
   }
 }
 
-// Counts down to the deadline, after which evaluation can be requested. Ticks every second.
+// ===== Evaluation =====
+// Before the deadline, the card counts down to it. After it, any member can request evaluation, which runs in the
+// background on the server (Gemini scores everyone, then the pool is paid out on-chain). While it runs the page
+// re-fetches every few seconds, and once it's done the results section shows each member's score, feedback and payout.
 let countdownTimer;
-function startCountdown(deadlineMillis) {
+let pollTimer;
+
+function renderEvaluation(project) {
   clearInterval(countdownTimer);
+  clearTimeout(pollTimer);
+  const evaluation = project.evaluation;
   const clock = $("#evaluation-countdown");
   const label = $("#evaluation-countdown-label");
-  const requestButton = $("#request-evaluation-button");
+  const form = $("#evaluation-form");
+  const button = $("#request-evaluation-button");
   const pad = (n) => String(n).padStart(2, "0");
+  const secondsLeft = () => Math.max(0, Math.floor((project.deadlineEpochMillis - Date.now()) / 1000));
 
-  function tick() {
-    const left = Math.max(0, Math.floor((deadlineMillis - Date.now()) / 1000));
-    // Anyone can request evaluation, but only once the deadline has passed
-    requestButton.disabled = left > 0;
-    requestButton.title = left > 0 ? "Available once the project deadline has passed" : "";
-    if (left === 0) {
-      clearInterval(countdownTimer);
-      clock.className = "countdown done";
-      clock.textContent = "✓ Ready for evaluation";
-      label.textContent = "The deadline has passed, so evaluation can now be requested.";
-      return;
-    }
+  renderResults(project);
+
+  function beforeDeadline(left) {
+    form.hidden = false;
+    button.disabled = true;
+    button.textContent = "Request evaluation";
+    button.title = "Available once the project deadline has passed";
     const days = Math.floor(left / 86400);
     const hours = Math.floor((left % 86400) / 3600);
     const minutes = Math.floor((left % 3600) / 60);
-    const seconds = left % 60;
     clock.className = "countdown";
-    clock.textContent = `${days > 0 ? `${days}d ` : ""}${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s`;
+    clock.textContent = `${days > 0 ? `${days}d ` : ""}${pad(hours)}h ${pad(minutes)}m ${pad(left % 60)}s`;
+    label.className = "muted small";
     label.textContent = "until evaluation can be requested (the project deadline)";
   }
+
+  function afterDeadline() {
+    form.hidden = evaluation.status === "PAID";
+    button.disabled = !evaluation.requestable;
+    button.title = evaluation.requestable ? "" : (evaluation.blocker || "");
+    label.className = "muted small";
+
+    if (evaluation.status === "RUNNING") {
+      clock.className = "countdown";
+      clock.textContent = "Evaluating…";
+      label.textContent = evaluation.scoresSaved
+        ? "Scores are in. Paying out the pool on the blockchain…"
+        : `Requested by ${evaluation.requestedBy}. Gemini is reviewing each member's commits, then the pool is paid out. This can take a minute or two.`;
+      button.textContent = "Evaluating…";
+      pollTimer = setTimeout(refresh, 3000);
+    } else if (evaluation.status === "PAID") {
+      clock.className = "countdown done";
+      clock.textContent = "✓ Paid out";
+      label.textContent = `Evaluated ${evaluation.finishedAt}. Each member's share has been sent to their wallet.`;
+    } else if (evaluation.status === "FAILED") {
+      clock.className = "countdown";
+      clock.textContent = "Didn't finish";
+      label.className = "small warning";
+      label.textContent = evaluation.requestable ? evaluation.error : `${evaluation.error} ${evaluation.blocker}`;
+      button.textContent = evaluation.scoresSaved ? "Finish paying out" : "Try again";
+    } else if (evaluation.requestable) {
+      clock.className = "countdown done";
+      clock.textContent = "✓ Ready for evaluation";
+      label.textContent = "The deadline has passed. Any member can now request evaluation.";
+      button.textContent = "Request evaluation";
+    } else {
+      clock.className = "countdown";
+      clock.textContent = "Can't be evaluated";
+      label.className = "small warning";
+      label.textContent = evaluation.blocker;
+      button.textContent = "Request evaluation";
+    }
+  }
+
+  function tick() {
+    const left = secondsLeft();
+    if (left > 0) {
+      beforeDeadline(left);
+      return;
+    }
+    clearInterval(countdownTimer);
+    afterDeadline();
+  }
   tick();
-  countdownTimer = setInterval(tick, 1000);
+  if (secondsLeft() > 0) countdownTimer = setInterval(tick, 1000);
 }
 
-// TODO: send the evaluation request to the server once that's built. For now clicking does nothing.
-$("#request-evaluation-button").addEventListener("click", () => {});
+// One card per member: score, payout (and the gain or loss against their stake), Gemini's feedback and evidence
+function renderResults(project) {
+  const evaluation = project.evaluation;
+  const section = $("#results-section");
+  section.hidden = evaluation.results.length === 0;
+  if (section.hidden) return;
+
+  const paid = evaluation.status === "PAID";
+  const badge = $("#results-badge");
+  badge.className = paid ? "badge green" : "badge amber";
+  badge.textContent = paid ? "✓ Paid out" : "Payout pending";
+  $("#results-summary").textContent = paid
+    ? `Scored by Gemini and paid out ${evaluation.finishedAt}. Everyone staked ${usdc(project.stakeAmount)}; payouts depend on scores and task weights.`
+    : evaluation.status === "RUNNING"
+      ? "Scored by Gemini. Sending the payouts now…"
+      : "Scored by Gemini, but the payouts haven't been sent yet. Request evaluation again to finish (the scores are kept).";
+
+  $("#results-list").replaceChildren(...evaluation.results.map((result) => {
+    const change = Number(result.change);
+    const changeText = change === 0 ? "Even" : `${change > 0 ? "+" : "−"}${usdc(Math.abs(change))}`;
+    return el("li", { class: "card task" },
+      el("div", { class: "result-head" },
+        avatar(result.initials),
+        el("div", {},
+          el("h3", { text: result.you ? `${result.name} (you)` : result.name }),
+          el("span", { class: "muted small", text: `${result.weightPercentage}% of the work` })),
+        el("span", { class: "result-score", title: "Gemini's score", text: `${result.score}/10` }),
+        el("div", { class: "result-money" },
+          el("strong", { text: usdc(result.payout) }),
+          el("div", { class: `small ${change > 0 ? "gain" : change < 0 ? "loss" : "muted"}`,
+            text: `${changeText} vs ${usdc(result.staked)} staked` }))),
+      el("p", { class: "result-feedback small", text: result.feedback || "No feedback." }),
+      result.evidence.length
+        ? el("details", { class: "evidence small" },
+            el("summary", { text: `Evidence (${result.evidence.length})` }),
+            el("ul", {}, ...result.evidence.map((item) => el("li", { text: item }))))
+        : null);
+  }));
+}
+
+// Starting it only takes a moment (the work happens in the background), but show that it's been pressed
+$("#evaluation-form").addEventListener("submit", () => {
+  const button = $("#request-evaluation-button");
+  setTimeout(() => { button.disabled = true; button.textContent = "Starting…"; });
+});
+
+// Re-fetches the project (and the wallet, whose balance changes when the pool pays out) while an evaluation runs
+let currentProjectId;
+async function refresh() {
+  try {
+    const [me, project] = await Promise.all([getJson("/api/me"), getJson(`/api/projects/${currentProjectId}`)]);
+    renderAccount(me);
+    renderInbox(me.invites);
+    renderProject(project, me);
+  } catch (error) {
+    showError(`Couldn't check on the evaluation: ${error.message}`);
+    pollTimer = setTimeout(refresh, 10000);
+  }
+}
 
 // Task weights must total 100%. Pending invites hold their weight until they're answered.
 function renderWeights(project) {
@@ -412,6 +527,7 @@ async function load() {
     $("#empty-state").hidden = false;
     return;
   }
+  currentProjectId = projectId;
   renderProject(await getJson(`/api/projects/${projectId}`), me);
 }
 

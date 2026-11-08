@@ -1,7 +1,10 @@
 package com.stolengalaxy.web;
 
 import com.stolengalaxy.Invite;
+import com.stolengalaxy.MemberResult;
 import com.stolengalaxy.Project;
+import com.stolengalaxy.ProjectEvaluation;
+import com.stolengalaxy.ProjectEvaluator;
 import com.stolengalaxy.Task;
 import com.stolengalaxy.User;
 import com.stolengalaxy.smartcontract.ProjectContracts;
@@ -72,9 +75,9 @@ final class Dtos {
                       BigDecimal stakeAmount, BigDecimal poolTotal, BigDecimal poolTarget,
                       boolean youStaked, boolean youCreated, String createdBy,
                       int assignedWeight, int reservedWeight, List<String> contractBlockers,
-                      boolean locked, ContractDto contract,
+                      boolean locked, ContractDto contract, EvaluationDto evaluation,
                       List<MemberDto> members, List<TaskDto> tasks, List<PendingInviteDto> pendingInvites) {
-        static ProjectDto of(Project project, User viewer, ContractDto contract) {
+        static ProjectDto of(Project project, User viewer, ContractDto contract, EvaluationDto evaluation) {
             BigDecimal stake = project.stakeAmount();
             return new ProjectDto(project.projectID(), project.name(), project.projectDescription(), project.repoURL(),
                     DEADLINE_FORMAT.format(project.deadline()), project.deadline().isBefore(LocalDateTime.now()),
@@ -86,7 +89,7 @@ final class Dtos {
                     project.hasStaked(viewer),
                     project.createdBy() == viewer, project.createdBy().username(),
                     project.assignedWeight(), project.reservedWeight(), project.contractBlockers(),
-                    project.isLocked(), contract,
+                    project.isLocked(), contract, evaluation,
                     project.users().stream().map(user -> MemberDto.of(project, user)).toList(),
                     project.tasks().stream().map(TaskDto::of).toList(),
                     project.invites().stream()
@@ -119,6 +122,53 @@ final class Dtos {
                     project.contractAddress(),
                     project.contractCreatedAt() == null ? null : DEADLINE_FORMAT.format(project.contractCreatedAt()),
                     contracts.available(), contracts.unavailableReason(), onChain);
+        }
+    }
+
+    /**
+     * The project's AI evaluation and payout.
+     *
+     * @param status      NONE (not requested yet), RUNNING, FAILED ({@code error} says why; it can be requested again) or PAID
+     * @param requestable whether the button works once the deadline has passed; {@code blocker} says why not
+     * @param scoresSaved whether Gemini's scores are in (a failed payout is retried with the same scores)
+     * @param results     one per member once scored, with their score, feedback, evidence and payout
+     */
+    record EvaluationDto(String status, String requestedBy, String requestedAt, String finishedAt, String error,
+                         boolean requestable, String blocker, boolean scoresSaved, List<ResultDto> results) {
+        static EvaluationDto of(Project project, User viewer, boolean running, boolean chainAvailable) {
+            ProjectEvaluation evaluation = project.evaluation();
+            String status = evaluation == null ? "NONE" : evaluation.status().name();
+            String error = evaluation == null ? null : evaluation.error();
+            if (status.equals("RUNNING") && !running) {
+                // Saved as running, but this server isn't working on it: it was cut off by a restart
+                status = "FAILED";
+                error = "The server restarted before the evaluation finished. Request it again to finish"
+                        + (evaluation.hasScores() ? " (the scores are kept)." : ".");
+            }
+            String blocker = ProjectEvaluator.blockerOtherThanDeadline(project);
+            if (blocker == null && !chainAvailable) {
+                blocker = "The blockchain isn't running, so the pool can't be paid out.";
+            }
+            boolean requestable = blocker == null && !status.equals("RUNNING") && !status.equals("PAID");
+            List<ResultDto> results = evaluation == null ? List.of()
+                    : evaluation.results().stream().map(result -> ResultDto.of(result, project, viewer)).toList();
+            return new EvaluationDto(status,
+                    evaluation == null || evaluation.requestedBy() == null ? null : evaluation.requestedBy().username(),
+                    evaluation == null || evaluation.requestedAt() == null ? null : DEADLINE_FORMAT.format(evaluation.requestedAt()),
+                    evaluation == null || evaluation.finishedAt() == null ? null : DEADLINE_FORMAT.format(evaluation.finishedAt()),
+                    error, requestable, blocker, evaluation != null && evaluation.hasScores(), results);
+        }
+    }
+
+    /** One member's result: {@code change} is what they gained (positive) or lost (negative) against their stake. */
+    record ResultDto(int userId, String name, String initials, boolean you, int score, String feedback, List<String> evidence,
+                     int weightPercentage, BigDecimal staked, BigDecimal payout, BigDecimal change) {
+        static ResultDto of(MemberResult result, Project project, User viewer) {
+            User user = result.user();
+            BigDecimal stake = project.stakeAmount();
+            return new ResultDto(user.userID(), user.username(), Dtos.initials(user.username()), user == viewer,
+                    result.score(), result.feedback(), result.evidence(), result.weightPercentage(),
+                    stake, result.payout(), result.payout().subtract(stake));
         }
     }
 

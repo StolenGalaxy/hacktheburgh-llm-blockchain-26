@@ -232,6 +232,16 @@ public class Bank implements AutoCloseable {
         return new BigDecimal(view(poolContract, "deposits", new Uint256(poolId), new Address(walletAddress)), 6);
     }
 
+    /** Whether the pool has been paid out (settled). */
+    public boolean isSettled(BigInteger poolId) throws IOException {
+        return view(poolContract, "isSettled", new Uint256(poolId)).signum() != 0; // a bool comes back as 0 or 1
+    }
+
+    /** USDC a wallet can still withdraw from a settled pool. */
+    public BigDecimal claimableOf(BigInteger poolId, String walletAddress) throws IOException {
+        return new BigDecimal(view(poolContract, "claimable", new Uint256(poolId), new Address(walletAddress)), 6);
+    }
+
     /** The latest block's timestamp (unix seconds): "now" as the contracts see it. */
     public long chainTime() throws IOException {
         return web3j.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false).send().getBlock().getTimestamp().longValueExact();

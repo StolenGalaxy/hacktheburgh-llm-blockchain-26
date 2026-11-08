@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class payoutAlgorithm {
+public class PayoutAlgorithm {
     private static float getAverageScore(HashMap<Integer, Integer> scores){
         int totalScore = 0;
         for (int score : scores.values()) {
@@ -26,10 +26,11 @@ public class payoutAlgorithm {
 
 
 
-    private static final HashMap<Integer, Integer> scores = new HashMap<Integer, Integer>();
-    private static final HashMap<Integer, Double> payouts = new HashMap<Integer, Double>();
-
     public static HashMap<Integer, Double>  calculatePayout(List<Evaluation> evals, Project project) {
+        // Fresh maps every call. (They used to be static fields that were never cleared, so each evaluation
+        // kept the previous projects' scores and payouts and mixed them into its own.)
+        HashMap<Integer, Integer> scores = new HashMap<Integer, Integer>();
+        HashMap<Integer, Double> payouts = new HashMap<Integer, Double>();
         BigDecimal stake = project.stakeAmount();
         HashMap<Integer, Integer> weights = setupWeightsMap(project.tasks());
         for (Evaluation eval : evals){

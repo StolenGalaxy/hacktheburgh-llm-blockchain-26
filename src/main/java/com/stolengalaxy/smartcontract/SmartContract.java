@@ -76,6 +76,18 @@ public class SmartContract implements ISmartContract {
     }
 
     @Override
+    public void payoutExact(Map<String, BigDecimal> payouts) {
+        List<Address> recipients = new ArrayList<>();
+        List<Uint256> amounts = new ArrayList<>();
+        payouts.forEach((wallet, money) -> {
+            recipients.add(new Address(wallet));
+            amounts.add(new Uint256(toUnits(money)));
+        });
+        call(poolContract, "settlePool", new Uint256(poolId),
+                new DynamicArray<>(Address.class, recipients), new DynamicArray<>(Uint256.class, amounts));
+    }
+
+    @Override
     public void withdraw() {
         call(poolContract, "withdraw", new Uint256(poolId));
     }
