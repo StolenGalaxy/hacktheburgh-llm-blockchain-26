@@ -106,9 +106,11 @@ public class SmartContract implements ISmartContract {
             TransactionReceipt receipt = new PollingTransactionReceiptProcessor(web3j, 200, 3_000)
                     .waitForTransactionReceipt(sent.getTransactionHash());
             if (!receipt.isStatusOK()) {
-                // anvil doesn't put the error in the receipt, so replay the call on the previous block to get it.
+                // anvil doesn't put the error in the receipt, so replay the call to get it. Replay it on the failed
+                // transaction's own block: a reverted transaction changes no state, and that block has the timestamp
+                // it actually ran with (an earlier block's could be from before a deadline, giving the wrong reason).
                 try {
-                    tx.sendCall(to, data, DefaultBlockParameter.valueOf(receipt.getBlockNumber().subtract(BigInteger.ONE)));
+                    tx.sendCall(to, data, DefaultBlockParameter.valueOf(receipt.getBlockNumber()));
                 } catch (ContractCallException e) {
                     throw new IllegalStateException(what + " failed: " + e.getMessage());
                 }

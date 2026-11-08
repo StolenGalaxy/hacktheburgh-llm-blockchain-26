@@ -2,6 +2,7 @@ package com.stolengalaxy.model;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.io.IOException;
@@ -13,7 +14,12 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * Reads commits through the GitHub REST API. (Scraping github.com's HTML pages broke: they
@@ -30,27 +36,62 @@ public class GitHubClient {
     private static final String API = "https://api.github.com";
     private static final int PER_PAGE = 100;
 
-    public static List<String> listCommitShas(String owner, String repo, String branch, String author)
+    /**
+     * The SHAs of each user's commits on {@code branch}, keyed by the usernames given (newest first; a user with no
+     * commits gets an empty list).
+     *
+     * <p>Commits are matched to users by the GitHub account GitHub links them to, not with the API's
+     * {@code ?author=} filter: that filter matches by email, so it misses commits made under an account's old
+     * username (e.g. {@code 123+oldname@users.noreply.github.com}) or with another email the account owns. Commits
+     * GitHub can't link to any account are matched by their author name or noreply email as a fallback.</p>
+     */
+    public static Map<String, List<String>> listCommitShasByUser(String owner, String repo, String branch,
+                                                                 Collection<String> usernames)
             throws IOException, InterruptedException {
-        List<String> commits = new ArrayList<>();
+        Map<String, String> byLowercase = new HashMap<>();
+        Map<String, List<String>> result = new LinkedHashMap<>();
+        for (String username : usernames) {
+            if (username != null && !username.isBlank()) {
+                byLowercase.put(username.trim().toLowerCase(Locale.ROOT), username);
+                result.put(username, new ArrayList<>());
+            }
+        }
         for (int page = 1; ; page++) {
             String url = API + "/repos/" + owner + "/" + repo + "/commits"
                     + "?sha=" + encode(branch)
-                    + "&author=" + encode(author)
                     + "&per_page=" + PER_PAGE
                     + "&page=" + page;
             String body = get(url, "application/vnd.github+json", true);
             if (body == null) {
-                return commits; // repository has no commits yet
+                return result; // repository has no commits yet
             }
             JsonArray array = JsonParser.parseString(body).getAsJsonArray();
             for (JsonElement element : array) {
-                commits.add(element.getAsJsonObject().get("sha").getAsString());
+                JsonObject commit = element.getAsJsonObject();
+                String user = byLowercase.get(authorKey(commit));
+                if (user != null) {
+                    result.get(user).add(commit.get("sha").getAsString());
+                }
             }
             if (array.size() < PER_PAGE) {
-                return commits;
+                return result;
             }
         }
+    }
+
+    /** Lowercase GitHub login of a commit's author: the linked account if there is one, else a best guess. */
+    private static String authorKey(JsonObject commit) {
+        JsonElement account = commit.get("author");
+        if (account != null && account.isJsonObject() && account.getAsJsonObject().has("login")) {
+            return account.getAsJsonObject().get("login").getAsString().toLowerCase(Locale.ROOT);
+        }
+        JsonObject author = commit.getAsJsonObject("commit").getAsJsonObject("author");
+        String email = author.has("email") ? author.get("email").getAsString().toLowerCase(Locale.ROOT) : "";
+        if (email.endsWith("@users.noreply.github.com")) {
+            String local = email.substring(0, email.indexOf('@'));
+            return local.substring(local.indexOf('+') + 1); // "123+name" or just "name"
+        }
+        return author.has("name") ? author.get("name").getAsString().trim().toLowerCase(Locale.ROOT) : "";
     }
 
     public static String fetchPatch(String owner, String repo, String sha) throws IOException, InterruptedException {

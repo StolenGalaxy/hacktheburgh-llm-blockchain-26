@@ -249,6 +249,17 @@ public class Bank implements AutoCloseable {
      */
     public long chainTime() throws IOException {
         new Request<>("evm_mine", List.of(), rpc, VoidResponse.class).send();
+        long chainNow = latestBlockTime();
+        // The contracts' deadlines are real times, so the chain's clock must never run behind the real one
+        long realNow = System.currentTimeMillis() / 1000;
+        if (chainNow < realNow) {
+            skipTime(realNow - chainNow);
+            chainNow = latestBlockTime();
+        }
+        return chainNow;
+    }
+
+    private long latestBlockTime() throws IOException {
         return web3j.ethGetBlockByNumber(DefaultBlockParameterName.LATEST, false).send().getBlock().getTimestamp().longValueExact();
     }
 

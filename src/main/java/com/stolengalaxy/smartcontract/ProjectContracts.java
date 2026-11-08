@@ -277,6 +277,20 @@ public final class ProjectContracts implements AutoCloseable {
                     throw new PayoutException("The payouts add up to " + Wallets.dollars(total) + ", but the pool holds "
                             + Wallets.dollars(held) + ". They must match exactly.");
                 }
+                step = "checking the pool has closed";
+                long closesAt = bank.poolEndTime(id).longValueExact();
+                long chainNow = bank.chainTime(); // also brings the chain's clock up to real time
+                if (chainNow <= closesAt) {
+                    // The contract settles once a block is later than the pool's end; wait out a few seconds at most
+                    if (closesAt - chainNow < 10) {
+                        Thread.sleep((closesAt - chainNow + 1) * 1000);
+                    }
+                    if (bank.chainTime() <= closesAt) {
+                        throw new PayoutException("The pool on the blockchain doesn't close until "
+                                + Instant.ofEpochSecond(closesAt).atZone(ZoneId.systemDefault()).toLocalTime()
+                                + ". Request evaluation again after that (the scores are kept).");
+                    }
+                }
                 step = "settling the pool";
                 Map<String, BigDecimal> byWallet = new LinkedHashMap<>();
                 for (Map.Entry<Integer, BigDecimal> payout : payouts.entrySet()) {

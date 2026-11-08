@@ -6,7 +6,10 @@ import com.stolengalaxy.Task;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.google.genai.Client;
 import com.google.genai.types.Content;
@@ -34,11 +37,16 @@ public class Gemini {
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
         String usersJson = gson.toJson(users);
 
-        StringBuilder commitsText = new StringBuilder();
+        // One listing of the branch for everyone; each user's commits are included once even if they have several tasks
+        Set<String> usernames = new LinkedHashSet<>();
         for (Task task : tasks) {
-            String username = task.user().githubUsername();
-            for (String sha : GitHubClient.listCommitShas(owner, repo, "main", username)) {
-                commitsText.append("=== commit by GitHub user: ").append(username).append(" ===\n");
+            usernames.add(task.user().githubUsername());
+        }
+        StringBuilder commitsText = new StringBuilder();
+        Map<String, List<String>> shasByUser = GitHubClient.listCommitShasByUser(owner, repo, "main", usernames);
+        for (Map.Entry<String, List<String>> entry : shasByUser.entrySet()) {
+            for (String sha : entry.getValue()) {
+                commitsText.append("=== commit by GitHub user: ").append(entry.getKey()).append(" ===\n");
                 commitsText.append(GitHubClient.fetchPatch(owner, repo, sha)).append("\n");
             }
         }
