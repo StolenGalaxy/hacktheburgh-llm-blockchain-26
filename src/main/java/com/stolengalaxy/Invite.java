@@ -2,10 +2,6 @@ package com.stolengalaxy;
 
 import jakarta.persistence.*;
 
-/**
- * An invitation for someone (by email, so they may not have an account yet) to join a project with a task.
- * Create these with {@link Project#invite}.
- */
 @Entity
 public class Invite {
 
@@ -23,16 +19,13 @@ public class Invite {
     @JoinColumn(name = "invited_by", nullable = false)
     private User invitedBy;
 
-    /** Invitee's email, stored lower-case. */
     @Column(nullable = false)
     private String email;
 
-    /** The task the invitee gets when they accept. */
     @Lob
     @Column(nullable = false)
     private String objective;
 
-    /** Weight of the invited task, reserved out of the project's 100% while the invite is pending. */
     @Column(nullable = false)
     private int weightPercentage;
 
@@ -52,7 +45,6 @@ public class Invite {
         this.weightPercentage = weightPercentage;
     }
 
-    /** Adds the user to the project with the invited task. */
     public void accept(User user) {
         project.assignTask(user, objective, weightPercentage);
         status = Status.ACCEPTED;
@@ -62,12 +54,10 @@ public class Invite {
         status = Status.DECLINED;
     }
 
-    /** Withdrawn by the project before the invitee answered; frees its reserved weight. */
     public void cancel() {
         status = Status.CANCELLED;
     }
 
-    /** The person who sent the invite, or the project's creator. */
     public boolean canBeCancelledBy(User user) {
         return invitedBy == user || project.createdBy() == user;
     }

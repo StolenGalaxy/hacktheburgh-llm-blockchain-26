@@ -13,11 +13,9 @@ public class User {
     @GeneratedValue
     private int userID;
 
-    /** Display name. */
     @Column(nullable = false)
     private String username;
 
-    /** Login identifier, stored lower-case. */
     @Column(unique = true)
     private String email;
 
@@ -27,11 +25,9 @@ public class User {
 
     private String githubUsername;
 
-    /** Projects this user is a member of. The owning side is {@link Project#users()}. */
     @ManyToMany(mappedBy = "users")
     private List<Project> projects = new ArrayList<>();
 
-    /** Tasks assigned to this user, across all their projects. */
     @OneToMany(mappedBy = "user")
     private List<Task> tasks = new ArrayList<>();
 
@@ -46,7 +42,6 @@ public class User {
         this.githubUsername = githubUsername;
     }
 
-    /** Sets the ID explicitly; only for users that are never persisted (e.g. tests). */
     public User(int userID, String username, String walletAddress, String githubUsername) {
         this.userID = userID;
         this.username = username;
